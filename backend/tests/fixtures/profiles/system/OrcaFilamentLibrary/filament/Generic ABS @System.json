@@ -1,0 +1,15 @@
+{
+ "type": "filament",
+ "name": "Generic ABS @System",
+ "from": "system",
+ "instantiation": "true",
+ "filament_type": [
+  "ABS"
+ ],
+ "nozzle_temperature": [
+  "250"
+ ],
+ "hot_plate_temp": [
+  "100"
+ ]
+}

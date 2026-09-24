@@ -1,0 +1,12 @@
+{
+ "type": "filament",
+ "name": "eSun ABS+ @My Voron",
+ "inherits": "Generic ABS @System",
+ "from": "User",
+ "filament_vendor": [
+  "eSun"
+ ],
+ "compatible_printers": [
+  "Some Other Printer"
+ ]
+}

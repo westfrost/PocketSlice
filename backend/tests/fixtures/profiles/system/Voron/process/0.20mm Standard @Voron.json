@@ -1,0 +1,12 @@
+{
+ "type": "process",
+ "name": "0.20mm Standard @Voron",
+ "inherits": "fdm_process_common",
+ "from": "system",
+ "instantiation": "true",
+ "compatible_printers": [
+  "Voron 2.4 300 0.4 nozzle"
+ ],
+ "layer_height": "0.2",
+ "initial_layer_print_height": "0.2"
+}
