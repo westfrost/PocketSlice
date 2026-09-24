@@ -105,6 +105,7 @@ def _fake_orca_cloud(calls: list):
                     {"id": "id1", "name": "Cloud PLA", "updated_time": 1, "content": {"type": "filament", "name": "Cloud PLA @Voron", "inherits": "Generic PLA @Voron", "nozzle_temperature": ["225"]}},
                     {"id": "id2", "name": "proc", "updated_time": 2, "content": json.dumps({"type": "print", "name": "0.12 Cloud Fine", "inherits": "0.20mm Standard @Voron", "layer_height": "0.12"})},
                     {"id": "id3", "name": "bad", "updated_time": 3, "content": {"foo": "bar"}},
+                    {"id": "id4", "name": "printer", "updated_time": 4, "content": {"type": "printer", "name": "Cloud Voron", "inherits": "Voron 2.4 300 0.4 nozzle", "retraction_length": ["0.6"]}},
                 ]})
         return httpx.Response(404)
 
@@ -127,7 +128,9 @@ async def test_orca_cloud_login_and_pull(client, env):
     r = await c.post("/api/orca-cloud/pull")
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["count"] == 2 and d["types"] == {"machine": 0, "process": 1, "filament": 1}
+    assert d["count"] == 3 and d["types"] == {"machine": 1, "process": 1, "filament": 1}
+    assert d["skipped"] == {"unknown type None": 1}
+    assert (env["profiles"] / "cloud" / "machine" / "Cloud Voron.json").exists()
     cloud = env["profiles"] / "cloud"
     assert (cloud / "filament" / "Cloud PLA @Voron.json").exists()
     assert (cloud / "process" / "0.12 Cloud Fine.json").exists()
@@ -137,7 +140,7 @@ async def test_orca_cloud_login_and_pull(client, env):
     fid = next(p["id"] for p in presets["filament"] if p["name"] == "Cloud PLA @Voron")
     flat = (await c.get(f"/api/presets/{fid}/flat")).json()
     assert flat["nozzle_temperature"] == ["225"] and flat["filament_flow_ratio"] == ["0.98"]
-    assert (await c.get("/api/orca-cloud/status")).json()["last_sync_count"] == 2
+    assert (await c.get("/api/orca-cloud/status")).json()["last_sync_count"] == 3
 
     # token expiry triggers a refresh before pulling
     main.orca_cloud.state["expires_at"] = 0
