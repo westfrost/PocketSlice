@@ -17,29 +17,59 @@ from .profiles import PresetLibrary, apply_overrides
 
 log = logging.getLogger(__name__)
 
-# OrcaSlicer CLI exit codes (src/OrcaSlicer.cpp / BambuStudio CLI)
+# OrcaSlicer CLI exit codes (src/libslic3r/Utils.hpp + cli_errors in src/OrcaSlicer.cpp).
+# The process exits with a negative code, which the shell reports as 256 + code
+# (e.g. -17 shows up as 239).
 CLI_ERRORS = {
-    1: "Environment error (missing libraries or resources in the container)",
-    2: "Invalid printer technology",
-    3: "Invalid input file",
-    4: "Cannot load input file",
-    5: "Invalid values in the config",
-    6: "Cannot load the config file",
-    7: "Invalid job ID",
-    8: "Could not load the 3D model",
-    9: "Cannot parse the 3mf model",
-    10: "Filament / printer mismatch (check that filament fits the machine)",
-    11: "Filament / nozzle mismatch",
-    12: "Model outside of the print bed after arranging",
-    13: "Empty print (nothing to slice)",
-    14: "Model or object is empty",
-    15: "Object is too large for the print bed",
-    16: "Slicing failed (see log)",
-    17: "Export failed",
-    18: "Object not on bed / out of range",
-    19: "Model's config is not compatible with the printer",
-    20: "Unsupported file format",
+    -1: "Failed setting up the slicer environment (missing libraries in the container).",
+    -2: "Invalid parameters to the slicer.",
+    -3: "The input files to the slicer were not found.",
+    -4: "File list order is invalid (3mf must come first).",
+    -5: "The preset file is invalid and cannot be parsed.",
+    -6: "The model file cannot be parsed.",
+    -7: "Unsupported printer technology (not FDM).",
+    -8: "Unsupported CLI instruction.",
+    -9: "Failed copying objects.",
+    -10: "Failed scaling an object to fit the plate.",
+    -11: "Failed exporting STL files.",
+    -12: "Failed exporting OBJ files.",
+    -13: "Failed exporting the 3mf file.",
+    -14: "Out of memory during slicing. Simplify the model (lower resolution) and try again.",
+    -15: "The selected printer is not supported by the 3mf.",
+    -16: "The selected printer is not compatible with the 3mf.",
+    -17: "The selected printer is not compatible with the process preset (compatible_printers mismatch).",
+    -18: "Invalid parameter value(s) in the 3mf file.",
+    -19: "post_process scripts are not supported in the CLI.",
+    -20: "The printer's bed is smaller than the bed size used in the process preset.",
+    -21: "Auto-arranging the object(s) failed. Try again with auto-arrange off.",
+    -22: "Auto-orienting the object(s) failed. Try again with auto-orient off.",
+    -23: "A printer parameter that must not change was modified in the 3mf.",
+    -24: "Unsupported 3MF version.",
+    -50: "A plate is empty or has no object fully inside it.",
+    -51: "Some slicing parameters are invalid (see the slicer log for details).",
+    -52: "Some objects are located over the boundary of the heated bed.",
+    -58: "Slicing took too long for one plate. Simplify the model or use a larger layer height.",
+    -59: "Too many triangles on one plate. Simplify the model.",
+    -60: "No printable objects to slice.",
+    -61: "The filament is not compatible with the selected plate type.",
+    -62: "The temperature difference between the filaments used is too large.",
+    -63: "Object conflicts were detected in print-by-object mode.",
+    -64: "Object conflicts were detected.",
+    -65: "Some parameters cannot work with Spiral Vase mode.",
+    -66: "Some filaments cannot be mapped to extruders.",
+    -67: "Only one TPU filament is supported.",
+    -68: "Some filaments cannot be printed on the extruder they are mapped to.",
+    -69: "A mixed filament is invalid.",
+    -100: "Failed slicing the model (see the slicer log for details).",
+    -101: "G-code path conflicts were detected after slicing.",
+    -102: "G-code found in an unprintable area.",
 }
+
+
+def cli_error_message(rc: int) -> tuple[int, str]:
+    signed = rc - 256 if rc > 127 else rc
+    return signed, CLI_ERRORS.get(signed, f"OrcaSlicer exited with code {signed}")
+
 
 SUPPORTED_MODEL_EXT = {".stl", ".3mf", ".obj", ".step", ".stp"}
 
@@ -119,6 +149,13 @@ async def run_slice(
         m_cfg = library.flatten(machine, vendor)
         p_cfg = apply_overrides(library.flatten(process, vendor), _split_overrides(overrides, "process"))
         f_cfg = apply_overrides(library.flatten(filament, vendor), _split_overrides(overrides, "filament"), force_list=True)
+        # The CLI (OrcaSlicer.cpp) refuses a process whose compatible_printers
+        # does not literally contain the printer preset's name (exit -17), even
+        # for pairs the GUI accepts. The user chose this pairing explicitly, so
+        # declare it compatible the same way the GUI's "save preset" would.
+        for cfg in (p_cfg, f_cfg):
+            cfg["compatible_printers"] = [machine.name]
+            cfg["compatible_printers_condition"] = ""
         (work_dir / "machine.json").write_text(json.dumps(m_cfg, indent=1), "utf-8")
         (work_dir / "process.json").write_text(json.dumps(p_cfg, indent=1), "utf-8")
         (work_dir / "filament.json").write_text(json.dumps(f_cfg, indent=1), "utf-8")
@@ -177,8 +214,8 @@ async def run_slice(
 
     tail = "\n".join(lines[-60:])
     if rc != 0:
-        msg = CLI_ERRORS.get(rc, f"OrcaSlicer exited with code {rc}")
-        raise SliceError(msg, tail, rc)
+        signed, msg = cli_error_message(rc)
+        raise SliceError(msg, tail, signed)
 
     await report("Collecting output")
     gcode_src = _locate_gcode(out_dir)
