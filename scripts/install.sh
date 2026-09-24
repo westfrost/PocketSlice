@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PocketSlice one-shot installer for Debian 12 / Ubuntu 22.04+ (bare metal, VM or Proxmox LXC).
 #
-#   curl -fsSL https://raw.githubusercontent.com/westfrost/Testilento/main/scripts/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/westfrost/PocketSlice/main/scripts/install.sh | sudo bash
 #
 # What it does:  installs Docker, clones PocketSlice to /opt/pocketslice, writes .env,
 #                builds the image (downloads OrcaSlicer) and starts the app on port 8080.
@@ -10,7 +10,7 @@
 # Non-interactive:  MOONRAKER_URL=http://192.168.1.50:7125 PORT=8080 ./install.sh
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/westfrost/Testilento.git}"
+REPO_URL="${REPO_URL:-https://github.com/westfrost/PocketSlice.git}"
 BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/pocketslice}"
 PORT="${PORT:-8080}"

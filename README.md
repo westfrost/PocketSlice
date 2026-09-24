@@ -40,13 +40,13 @@ presets, Tailscale, with copy-paste commands).
 One command on a Debian/Ubuntu machine (e.g. a Proxmox LXC container with `nesting=1`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/westfrost/Testilento/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/westfrost/PocketSlice/main/scripts/install.sh | sudo bash
 ```
 
 Or by hand:
 
 ```bash
-git clone https://github.com/westfrost/Testilento.git pocketslice && cd pocketslice
+git clone https://github.com/westfrost/PocketSlice.git pocketslice && cd pocketslice
 cp .env.example .env            # set MOONRAKER_URL
 docker compose up -d --build    # the first build downloads OrcaSlicer (~150 MB) and takes a few minutes
 ```

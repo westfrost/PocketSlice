@@ -113,7 +113,7 @@ The prompt changes to `root@pocketslice:~#`. You are now "inside the server". Co
 Paste this single line inside the container (or on any other Debian/Ubuntu machine):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/westfrost/Testilento/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/westfrost/PocketSlice/main/scripts/install.sh | bash
 ```
 
 The script:
@@ -311,7 +311,7 @@ pct start 200 / pct stop 200  # start/stop
 pct enter 200                 # "step into" the container
 
 # --- Inside the container / on the server ---------------------------------
-curl -fsSL https://raw.githubusercontent.com/westfrost/Testilento/main/scripts/install.sh | bash   # install / update
+curl -fsSL https://raw.githubusercontent.com/westfrost/PocketSlice/main/scripts/install.sh | bash   # install / update
 docker ps                                     # is it running?
 docker logs -f pocketslice                    # log
 cd /opt/pocketslice && docker compose restart # restart
