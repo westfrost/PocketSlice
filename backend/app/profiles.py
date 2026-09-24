@@ -90,9 +90,11 @@ def _guess_type(path: Path, data: dict[str, Any]) -> str | None:
     t = data.get("type")
     if t in PRESET_TYPES:
         return t
-    # OrcaSlicer also uses "print" for process internally in some exports
+    # OrcaSlicer also uses "print" for process and "printer" for machine in some exports
     if t == "print":
         return "process"
+    if t == "printer":
+        return "machine"
     for part in reversed(path.parts):
         if part in PRESET_TYPES:
             return part
@@ -204,18 +206,53 @@ class PresetLibrary:
         return out
 
     # ---------------------------------------------------------------- lookup
-    def list(self) -> dict[str, Any]:
-        out: dict[str, Any] = {"last_used": self.last_used, "errors": self.errors}
+    def list(self, all_machines: bool = False) -> dict[str, Any]:
+        out: dict[str, Any] = {"last_used": self.last_used, "errors": self.errors, "machine_filtered": False}
         for t in PRESET_TYPES:
             items = [p.summary() for p in self.user[t]]
-            # system presets are only offered when the user has none of that
-            # type, or explicitly for machines (a fresh setup) – but always
-            # available by id.
+            # system presets are offered when the user has none of that type
+            # (typical for printers: people use the stock printer preset and
+            # only save their own process/filament presets).
             if not items:
-                items = [p.summary() for p in self.system[t] if p.raw.get("instantiation", "true") != "false"]
+                candidates = [p for p in self.system[t] if p.raw.get("instantiation", "true") != "false"]
+                if t == "machine" and not all_machines:
+                    vendors = self.referenced_vendors()
+                    if vendors:
+                        candidates = [p for p in candidates if p.vendor in vendors]
+                        out["machine_filtered"] = True
+                items = [p.summary() for p in candidates]
             out[t] = sorted(items, key=lambda p: p["name"].lower())
         out["counts"] = {t: {"user": len(self.user[t]), "system": len(self.system[t])} for t in PRESET_TYPES}
         return out
+
+    def referenced_vendors(self) -> set[str]:
+        """Vendors that the user's process/filament presets inherit from."""
+        vendors: set[str] = set()
+        for t in ("process", "filament"):
+            for p in self.user[t]:
+                v = self.vendor_of(p)
+                if v and v != "OrcaFilamentLibrary":
+                    vendors.add(v)
+        return vendors
+
+    def referenced_printers(self) -> list[str]:
+        """Printer names listed in compatible_printers along the user's
+        process/filament inheritance chains, most specific first."""
+        names: list[str] = []
+        for t in ("process", "filament"):
+            for p in self.user[t]:
+                cur: Preset | None = p
+                hint = p.vendor
+                guard = 0
+                while cur is not None and guard < 20:
+                    guard += 1
+                    for n in cur.raw.get("compatible_printers") or []:
+                        if n not in names:
+                            names.append(n)
+                    if cur.vendor:
+                        hint = cur.vendor
+                    cur = self._find_parent(cur.inherits, cur.type, hint) if cur.inherits else None
+        return names
 
     def get(self, preset_id_or_name: str, ptype: str | None = None) -> Preset | None:
         p = self.by_id.get(preset_id_or_name)
@@ -230,7 +267,8 @@ class PresetLibrary:
         return None
 
     def find_default(self, ptype: str, configured_name: str = "") -> Preset | None:
-        """Configured default > last used in Orca > first user preset."""
+        """Configured default > last used in Orca > first user preset >
+        (machines only) the system printer the user's presets were made for."""
         for name in (configured_name, self.last_used.get(ptype, "")):
             if name:
                 p = self.get(name, ptype)
@@ -238,6 +276,15 @@ class PresetLibrary:
                     return p
         if self.user[ptype]:
             return self.user[ptype][0]
+        if ptype == "machine":
+            for name in self.referenced_printers():
+                p = self.get(name, "machine")
+                if p:
+                    return p
+            vendors = self.referenced_vendors()
+            for p in self.system["machine"]:
+                if p.vendor in vendors and p.raw.get("instantiation", "true") != "false":
+                    return p
         return None
 
     # ---------------------------------------------------------- flattening

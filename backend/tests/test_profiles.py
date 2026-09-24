@@ -87,3 +87,16 @@ def test_flat_layout_and_imported(tmp_path: Path):
     assert lib.get("Flat proc").type == "process"
     assert lib.get("Imported fil").type == "filament"
     assert lib.flatten(lib.get("Flat proc"))["layer_height"] == "0.3"
+
+
+def test_system_printer_suggested_when_user_has_none(profiles_dir: Path):
+    (profiles_dir / "user" / "default" / "machine" / "My Voron 2.4.json").unlink()
+    (profiles_dir / "OrcaSlicer.conf").unlink()
+    lib = PresetLibrary(profiles_dir).scan()
+    listing = lib.list()
+    assert listing["machine_filtered"] is True
+    assert [m["name"] for m in listing["machine"]] == ["Voron 2.4 300 0.4 nozzle"]   # Voron vendor only, no abstract presets
+    assert lib.referenced_vendors() == {"Voron"}
+    # the parent process preset lists the stock printer it was made for
+    assert lib.find_default("machine").name == "Voron 2.4 300 0.4 nozzle"
+    assert lib.list(all_machines=True)["machine_filtered"] is False

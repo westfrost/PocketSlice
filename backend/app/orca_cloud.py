@@ -47,7 +47,20 @@ AUTHORIZE_PATH = "/auth/v1/authorize"
 PULL_PATH = "/api/v1/sync/pull"
 DEFAULT_REDIRECT = "http://localhost:8080/callback"
 
-TYPE_DIRS = {"machine": "machine", "process": "process", "print": "process", "filament": "filament"}
+TYPE_DIRS = {"machine": "machine", "printer": "machine", "process": "process", "print": "process", "filament": "filament"}
+
+
+def _guess_type(content: dict[str, Any]) -> str | None:
+    t = TYPE_DIRS.get(str(content.get("type", "")).lower())
+    if t:
+        return t
+    if "filament_type" in content or "filament_settings_id" in content or "filament_vendor" in content:
+        return "filament"
+    if "printer_model" in content or "printer_settings_id" in content or "printable_area" in content or "nozzle_diameter" in content:
+        return "machine"
+    if "layer_height" in content or "print_settings_id" in content or "sparse_infill_density" in content:
+        return "process"
+    return None
 
 
 class OrcaCloudError(Exception):
@@ -105,6 +118,7 @@ class OrcaCloud:
             "user_id": self.state.get("user_id"),
             "last_sync": self.state.get("last_sync"),
             "last_sync_count": self.state.get("last_sync_count"),
+            "last_skipped": self.state.get("last_skipped") or {},
             "last_error": self.state.get("last_error"),
             "auth_url": AUTH_URL,
             "api_url": CLOUD_URL,
@@ -243,28 +257,34 @@ class OrcaCloud:
             upserts = [u for u in (data.get("upserts") or []) if isinstance(u, dict)]
             self.state["next_cursor"] = data.get("next_cursor")
 
-        written = self._write_presets(upserts)
-        self.state.update(last_sync=time.time(), last_sync_count=written, last_error=None)
+        written, skipped = self._write_presets(upserts)
+        self.state.update(last_sync=time.time(), last_sync_count=written, last_error=None, last_skipped=skipped)
         self._save()
-        return {"ok": True, "count": written, "types": _count_types(self.cloud_dir)}
+        return {"ok": True, "count": written, "types": _count_types(self.cloud_dir), "skipped": skipped}
 
-    def _write_presets(self, upserts: list[dict[str, Any]]) -> int:
+    def _write_presets(self, upserts: list[dict[str, Any]]) -> tuple[int, dict[str, int]]:
         tmp = self.cloud_dir.with_name(self.cloud_dir.name + ".new")
         if tmp.exists():
             _rmtree(tmp)
         written = 0
+        skipped: dict[str, int] = {}
         for item in upserts:
             content = item.get("content")
             if isinstance(content, str):
                 try:
                     content = json.loads(content)
                 except ValueError:
+                    skipped["unparseable"] = skipped.get("unparseable", 0) + 1
                     continue
             if not isinstance(content, dict):
+                skipped["no content"] = skipped.get("no content", 0) + 1
                 continue
             name = content.get("name") or item.get("name") or item.get("id")
-            ptype = TYPE_DIRS.get(str(content.get("type", "")).lower())
+            ptype = _guess_type(content)
             if not name or not ptype:
+                key = f"unknown type {content.get('type')!r}"
+                skipped[key] = skipped.get(key, 0) + 1
+                log.warning("Orca Cloud: skipping profile %r with keys %s", name, sorted(content)[:15])
                 continue
             content = dict(content)
             content["name"] = name
@@ -280,7 +300,7 @@ class OrcaCloud:
             _rmtree(self.cloud_dir)
         if tmp.exists():
             tmp.replace(self.cloud_dir)
-        return written
+        return written, skipped
 
 
 def _rmtree(p: Path) -> None:

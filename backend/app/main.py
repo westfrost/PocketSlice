@@ -199,8 +199,8 @@ async def test_printer() -> dict[str, Any]:
 
 
 @app.get("/api/presets", dependencies=P)
-async def presets(machine: str | None = None) -> dict[str, Any]:
-    data = library.list()
+async def presets(machine: str | None = None, all_machines: bool = False) -> dict[str, Any]:
+    data = library.list(all_machines=all_machines)
     s = settings_store.settings
     defaults = {}
     for t in ("machine", "process", "filament"):

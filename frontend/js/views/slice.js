@@ -129,7 +129,7 @@ export class SliceView {
               <div><div>Shrinkage compensation</div><div class="small muted" id="shrink-info">Reading preset…</div></div>
               <input type="checkbox" id="shrink" class="switch-input" ${(this.choice.shrink ?? (state.settings.shrinkage_default !== 'off')) ? 'checked' : ''}>
             </div>
-            <label class="switch"><span class="muted small">Show presets for other printers</span><input type="checkbox" id="show-all" ${showAll ? 'checked' : ''}></label>
+            <label class="switch"><span class="muted small">Show presets for other printers${p.machine_filtered ? ' (and all printer models)' : ''}</span><input type="checkbox" id="show-all" ${showAll ? 'checked' : ''}></label>
             <details>
               <summary>Quick overrides</summary>
               <div class="stack" style="margin-top:10px" id="overrides"></div>
@@ -188,10 +188,16 @@ export class SliceView {
     $$('select', card).forEach((s) => s.addEventListener('change', persist));
     $('#sel-machine', card).addEventListener('change', async () => {
       // refresh compatibility flags for the newly chosen printer
-      try { state.presets = await api.get(`/api/presets?machine=${encodeURIComponent($('#sel-machine', card).value)}`); } catch { /* keep */ }
+      try { state.presets = await api.get(`/api/presets?machine=${encodeURIComponent($('#sel-machine', card).value)}&all_machines=${$('#show-all', card).checked}`); } catch { /* keep */ }
       persist(); this.renderPresets();
     });
-    $('#show-all', card).addEventListener('change', () => { persist(); this.renderPresets(); });
+    $('#show-all', card).addEventListener('change', async () => {
+      persist();
+      if (state.presets.machine_filtered || this.choice.showAll) {
+        try { state.presets = await api.get(`/api/presets?all_machines=${this.choice.showAll}`); } catch { /* keep */ }
+      }
+      this.renderPresets();
+    });
     const emb = $('#embedded', card);
     if (emb) emb.addEventListener('change', () => $('#preset-fields', card).classList.toggle('hidden', emb.checked));
     $('#slice-btn', card).onclick = () => this.slice(card);

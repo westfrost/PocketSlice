@@ -115,7 +115,12 @@ async function renderCloud(root, refresh) {
       </div>`;
     $('#oc-pull', box).onclick = async () => {
       $('#oc-pull', box).disabled = true;
-      try { const r = await api.post('/api/orca-cloud/pull'); toast(`Pulled ${r.count} presets from Orca Cloud`, 'ok'); await refresh(); renderCloud(root, refresh); }
+      try {
+        const r = await api.post('/api/orca-cloud/pull');
+        const sk = Object.entries(r.skipped || {}).map(([k, v]) => `${v} ${k}`).join(', ');
+        toast(`Pulled ${r.count} presets from Orca Cloud (${r.types.machine} printer · ${r.types.process} process · ${r.types.filament} filament)${sk ? ` · skipped ${sk}` : ''}`, 'ok');
+        await refresh(); renderCloud(root, refresh);
+      }
       catch (e) { toast(e.message, 'error'); $('#oc-pull', box).disabled = false; }
     };
     $('#oc-auto', box).onchange = async (e) => { await api.put('/api/settings', { orca_cloud_auto_sync_minutes: Number(e.target.value) }); state.settings.orca_cloud_auto_sync_minutes = Number(e.target.value); toast('Saved', 'ok'); };
