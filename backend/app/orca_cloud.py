@@ -214,36 +214,34 @@ class OrcaCloud:
 
     async def _pull(self) -> dict[str, Any]:
         token = await self._ensure_token()
-        upserts: list[dict[str, Any]] = []
-        cursor: int | None = None
-        for _ in range(50):  # paginated by next_cursor
-            url = f"{CLOUD_URL}{PULL_PATH}" + (f"?cursor={cursor}" if cursor else "")
-            try:
-                async with self._client(timeout=60) as c:
+        # One request without a cursor returns every profile. "next_cursor" in
+        # the answer is a timestamp for later *incremental* pulls (OrcaSlicer
+        # stores it as last_sync_timestamp); it is not pagination, and using it
+        # right away yields 410 cursor_too_old. We always do a full pull.
+        url = f"{CLOUD_URL}{PULL_PATH}"
+        try:
+            async with self._client(timeout=60) as c:
+                r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+                if r.status_code == 401:
+                    await self.refresh()
+                    token = self.state["access_token"]
                     r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
-                    if r.status_code == 401:
-                        await self.refresh()
-                        token = self.state["access_token"]
-                        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
-            except httpx.HTTPError as e:
-                raise OrcaCloudError(f"Cannot reach {CLOUD_URL}: {e.__class__.__name__}") from e
-            if r.status_code == 304:
-                break
-            if r.status_code >= 400:
-                snippet = re.sub(r"\s+", " ", r.text[:200]).strip()
-                self.state["last_error"] = f"{r.status_code}: {snippet}"
-                self._save()
-                raise OrcaCloudError(f"Orca Cloud sync failed ({r.status_code} from {url}): {snippet}")
+        except httpx.HTTPError as e:
+            raise OrcaCloudError(f"Cannot reach {CLOUD_URL}: {e.__class__.__name__}") from e
+        if r.status_code >= 400:
+            snippet = re.sub(r"\s+", " ", r.text[:200]).strip()
+            self.state["last_error"] = f"{r.status_code}: {snippet}"
+            self._save()
+            raise OrcaCloudError(f"Orca Cloud sync failed ({r.status_code} from {url}): {snippet}")
+        upserts: list[dict[str, Any]] = []
+        if r.status_code != 304:
             data = _json_or_error(r, "Sync pull")
             if isinstance(data, list):          # tolerate a bare list of profiles
                 data = {"upserts": data}
             if not isinstance(data, dict):
                 raise OrcaCloudError(f"Unexpected sync response: {str(data)[:200]}")
-            upserts.extend(u for u in (data.get("upserts") or []) if isinstance(u, dict))
-            nxt = data.get("next_cursor") or 0
-            if not nxt or nxt == cursor or not data.get("upserts"):
-                break
-            cursor = nxt
+            upserts = [u for u in (data.get("upserts") or []) if isinstance(u, dict)]
+            self.state["next_cursor"] = data.get("next_cursor")
 
         written = self._write_presets(upserts)
         self.state.update(last_sync=time.time(), last_sync_count=written, last_error=None)

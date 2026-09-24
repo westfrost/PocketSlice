@@ -98,13 +98,14 @@ def _fake_orca_cloud(calls: list):
                 return httpx.Response(200, headers={"content-type": "text/html"}, text="<html><body>Not Found</body></html>")
             if request.headers.get("authorization") != "Bearer A-password" and request.headers.get("authorization") != "Bearer A-refresh_token":
                 return httpx.Response(401, text="unauthorized")
-            if "cursor=" not in url:
-                return httpx.Response(200, json={"next_cursor": 5, "upserts": [
+            if "cursor=" in url:
+                return httpx.Response(410, json={"error": "cursor_too_old", "cursor": 5})
+            if True:
+                return httpx.Response(200, json={"next_cursor": 1786273668, "upserts": [
                     {"id": "id1", "name": "Cloud PLA", "updated_time": 1, "content": {"type": "filament", "name": "Cloud PLA @Voron", "inherits": "Generic PLA @Voron", "nozzle_temperature": ["225"]}},
                     {"id": "id2", "name": "proc", "updated_time": 2, "content": json.dumps({"type": "print", "name": "0.12 Cloud Fine", "inherits": "0.20mm Standard @Voron", "layer_height": "0.12"})},
                     {"id": "id3", "name": "bad", "updated_time": 3, "content": {"foo": "bar"}},
                 ]})
-            return httpx.Response(200, json={"next_cursor": 5, "upserts": [], "deletes": ["id9"]})
         return httpx.Response(404)
 
     return httpx.MockTransport(handler)
