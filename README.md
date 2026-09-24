@@ -86,17 +86,18 @@ schedule, or export single presets from Orca (right-click → *Export*) and impo
 
 ## Access from outside your home (Tailscale, free)
 
-Do **not** open router ports. Install Tailscale on the phone and use the sidecar setup, which
-gives the app its own HTTPS name on your tailnet:
+Do **not** open router ports. Install Tailscale on the phone and on the server, then publish
+the app on your tailnet with HTTPS:
 
 ```bash
-# .env: TS_AUTHKEY=tskey-auth-...   (Tailscale admin → Settings → Keys)
-docker compose -f docker-compose.yml -f docker-compose.tailscale.yml up -d --build
-# → https://pocketslice.<tailnet>.ts.net
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up
+tailscale serve --bg 8080        # → https://pocketslice.<tailnet>.ts.net
 ```
 
 HTTPS is also what makes PWA installation and "Share to PocketSlice" work fully on Android.
-Alternative: run Tailscale on the server itself and use `http://<ts-ip>:8080`.
+`docker-compose.tailscale.yml` is an alternative that runs Tailscale as a Docker sidecar; it does
+not work inside unprivileged Proxmox LXC containers.
 
 ## Slicing speed
 
@@ -140,8 +141,11 @@ key, changed in the app's Settings tab, which stores to `/data/settings.json`.
   upload does this), or export the preset from Orca and import it.
 * **Slicing fails**: tap *Slicer log* on the job; the full OrcaSlicer output is kept. Exit codes
   are translated to plain text (e.g. "Object is too large for the print bed").
-* **Cannot reach Moonraker from the container**: use the printer's IP instead of `voron.local`,
-  or set `extra_hosts` in `docker-compose.yml`. Test with *Test connection* in Settings.
+* **Cannot reach Moonraker from the container**: use the printer's IP instead of `voron.local`
+  (`.local` names do not resolve inside the container). Test with *Test connection* in Settings.
+* **`open sysctl net.ipv4.ip_unprivileged_port_start … permission denied` on start**: Docker's
+  bridge networking is blocked in unprivileged Proxmox LXC containers. The compose file uses
+  `network_mode: host` for that reason; do not add `ports:` or a custom network to it.
 * **Docker build fails downloading OrcaSlicer**: release file names change now and then. Find
   the newest Linux AppImage at <https://github.com/SoftFever/OrcaSlicer/releases> and build with
   `docker compose build --build-arg ORCA_APPIMAGE_URL=<url>`.

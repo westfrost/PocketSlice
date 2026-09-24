@@ -1,6 +1,12 @@
 # Optional: expose PocketSlice on your Tailscale network with HTTPS, so the
 # phone reaches it from anywhere without opening router ports.
 #
+# NOTE: this sidecar gives the app its own network namespace and therefore does
+# NOT work inside an unprivileged Proxmox LXC container (Docker fails with
+# "open sysctl net.ipv4.ip_unprivileged_port_start ... permission denied").
+# On Proxmox, install Tailscale on the server itself instead – see docs/SETUP.md
+# section 8, it is two commands.
+#
 #   1. Create an auth key at https://login.tailscale.com/admin/settings/keys
 #      (reusable, tag or not – your choice) and put it in .env as TS_AUTHKEY=...
 #   2. Enable MagicDNS + HTTPS certificates in the Tailscale admin console (DNS tab).
@@ -28,9 +34,8 @@ services:
       - SYS_MODULE
 
   pocketslice:
-    # share the tailscale container's network namespace
+    # share the tailscale container's network namespace instead of the host's
     network_mode: service:tailscale
-    ports: []
     depends_on:
       - tailscale
 

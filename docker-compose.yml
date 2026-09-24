@@ -1,14 +1,20 @@
 # PocketSlice – run with:  docker compose up -d --build
-# Copy .env.example to .env first and set MOONRAKER_URL / APP_PASSWORD.
+# Copy .env.example to .env first and set MOONRAKER_URL (or do it in the app's wizard).
+#
+# The container uses the host's network (network_mode: host):
+#  - it works inside unprivileged Proxmox LXC containers, where Docker's default
+#    bridge networking fails with "open sysctl net.ipv4.ip_unprivileged_port_start ... permission denied"
+#  - the app listens directly on the server's IP, port PORT (default 8080)
 services:
   pocketslice:
     build: .
     image: pocketslice:latest
     container_name: pocketslice
     restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:8080"
+    network_mode: host
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "${PORT:-8080}", "--proxy-headers", "--forwarded-allow-ips=*"]
     environment:
+      PORT: ${PORT:-8080}
       MOONRAKER_URL: ${MOONRAKER_URL:-http://voron.local:7125}
       MOONRAKER_API_KEY: ${MOONRAKER_API_KEY:-}
       PRINTER_NAME: ${PRINTER_NAME:-Voron}
@@ -17,12 +23,10 @@ services:
       APP_PASSWORD: ${APP_PASSWORD:-}
       SLICE_TIMEOUT: ${SLICE_TIMEOUT:-1800}
     volumes:
-      # Your OrcaSlicer config folder (user/ + system/ + OrcaSlicer.conf) goes here.
+      # Your OrcaSlicer config folder (user/ + system/ + OrcaSlicer.conf) goes here,
+      # or upload it from the browser under Settings.
       - ./profiles:/profiles
       - pocketslice-data:/data
-    # Uncomment if the container cannot resolve voron.local (mDNS) – use the IP instead
-    # extra_hosts:
-    #   - "voron.local:192.168.1.50"
 
 volumes:
   pocketslice-data:
