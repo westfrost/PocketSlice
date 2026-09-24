@@ -1,0 +1,10 @@
+.env
+data/
+profiles/*
+!profiles/README.md
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+node_modules/
+*.log

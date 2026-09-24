@@ -1,0 +1,12 @@
+{
+ "type": "machine",
+ "name": "My Voron 2.4",
+ "inherits": "Voron 2.4 300 0.4 nozzle",
+ "from": "User",
+ "is_custom_defined": "0",
+ "retraction_length": [
+  "0.5"
+ ],
+ "printer_settings_id": "My Voron 2.4",
+ "version": "2.2.0.0"
+}

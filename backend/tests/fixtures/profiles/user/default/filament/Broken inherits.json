@@ -1,0 +1,6 @@
+{
+ "type": "filament",
+ "name": "Broken inherits",
+ "inherits": "Does Not Exist",
+ "from": "User"
+}

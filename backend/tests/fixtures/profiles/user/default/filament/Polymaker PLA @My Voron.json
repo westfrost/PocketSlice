@@ -1,0 +1,15 @@
+{
+ "type": "filament",
+ "name": "Polymaker PLA @My Voron",
+ "inherits": "Generic PLA @Voron",
+ "from": "User",
+ "filament_vendor": [
+  "Polymaker"
+ ],
+ "nozzle_temperature": [
+  "220"
+ ],
+ "filament_shrink": [
+  "99.5%"
+ ]
+}

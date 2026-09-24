@@ -1,0 +1,38 @@
+# Optional: expose PocketSlice on your Tailscale network with HTTPS, so the
+# phone reaches it from anywhere without opening router ports.
+#
+#   1. Create an auth key at https://login.tailscale.com/admin/settings/keys
+#      (reusable, tag or not – your choice) and put it in .env as TS_AUTHKEY=...
+#   2. Enable MagicDNS + HTTPS certificates in the Tailscale admin console (DNS tab).
+#   3. docker compose -f docker-compose.yml -f docker-compose.tailscale.yml up -d --build
+#   4. Open https://pocketslice.<your-tailnet>.ts.net on the phone (Tailscale app installed)
+#      and "Add to Home Screen".
+services:
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: pocketslice-tailscale
+    hostname: pocketslice
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      # 'tailscale serve' terminates HTTPS on the tailnet and forwards to the app
+      TS_SERVE_CONFIG: /config/serve.json
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./docker/tailscale-serve.json:/config/serve.json:ro
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+
+  pocketslice:
+    # share the tailscale container's network namespace
+    network_mode: service:tailscale
+    ports: []
+    depends_on:
+      - tailscale
+
+volumes:
+  tailscale-state:
