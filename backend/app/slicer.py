@@ -118,7 +118,7 @@ async def run_slice(
         vendor = library.vendor_of(machine)
         m_cfg = library.flatten(machine, vendor)
         p_cfg = apply_overrides(library.flatten(process, vendor), _split_overrides(overrides, "process"))
-        f_cfg = apply_overrides(library.flatten(filament, vendor), _split_overrides(overrides, "filament"))
+        f_cfg = apply_overrides(library.flatten(filament, vendor), _split_overrides(overrides, "filament"), force_list=True)
         (work_dir / "machine.json").write_text(json.dumps(m_cfg, indent=1), "utf-8")
         (work_dir / "process.json").write_text(json.dumps(p_cfg, indent=1), "utf-8")
         (work_dir / "filament.json").write_text(json.dumps(f_cfg, indent=1), "utf-8")
@@ -205,7 +205,8 @@ def _split_overrides(overrides: dict[str, Any] | None, kind: str) -> dict[str, A
         return {}
     filament_keys = {"nozzle_temperature", "nozzle_temperature_initial_layer", "hot_plate_temp",
                      "hot_plate_temp_initial_layer", "textured_plate_temp", "textured_plate_temp_initial_layer",
-                     "cool_plate_temp", "eng_plate_temp", "filament_max_volumetric_speed", "filament_flow_ratio"}
+                     "cool_plate_temp", "eng_plate_temp", "filament_max_volumetric_speed", "filament_flow_ratio",
+                     "filament_shrink", "filament_shrinkage_compensation_z"}
     return {k: v for k, v in overrides.items() if (k in filament_keys) == (kind == "filament")}
 
 

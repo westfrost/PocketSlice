@@ -125,6 +125,10 @@ export class SliceView {
             <div class="field"><label>Printer</label><select class="input" id="sel-machine">${options('machine')}</select></div>
             <div class="field"><label>Process</label><select class="input" id="sel-process">${options('process')}</select></div>
             <div class="field"><label>Filament</label><select class="input" id="sel-filament">${options('filament')}</select></div>
+            <div class="shrink-card">
+              <div><div>Shrinkage compensation</div><div class="small muted" id="shrink-info">Reading preset…</div></div>
+              <input type="checkbox" id="shrink" class="switch-input" ${(this.choice.shrink ?? (state.settings.shrinkage_default !== 'off')) ? 'checked' : ''}>
+            </div>
             <label class="switch"><span class="muted small">Show presets for other printers</span><input type="checkbox" id="show-all" ${showAll ? 'checked' : ''}></label>
             <details>
               <summary>Quick overrides</summary>
@@ -164,9 +168,23 @@ export class SliceView {
     }
 
     const persist = () => {
-      this.choice = { machine: $('#sel-machine', card).value, process: $('#sel-process', card).value, filament: $('#sel-filament', card).value, showAll: $('#show-all', card).checked };
+      this.choice = { machine: $('#sel-machine', card).value, process: $('#sel-process', card).value, filament: $('#sel-filament', card).value, showAll: $('#show-all', card).checked, shrink: $('#shrink', card).checked };
       localStorage.setItem(LS_KEY, JSON.stringify(this.choice));
     };
+    const shrinkInfo = async () => {
+      const info = $('#shrink-info', card);
+      try {
+        const flat = await api.get(`/api/presets/${$('#sel-filament', card).value}/flat`);
+        const xy = (flat.filament_shrink || ['100%'])[0], z = (flat.filament_shrinkage_compensation_z || ['100%'])[0];
+        this.presetShrink = { xy, z };
+        const none = parseFloat(xy) === 100 && parseFloat(z) === 100;
+        info.textContent = none ? 'Preset has no shrinkage set (100%)' : `Preset: XY ${xy}${parseFloat(z) !== 100 ? ` · Z ${z}` : ''}`;
+        $('#shrink', card).disabled = none;
+      } catch (e) { info.textContent = e.message; }
+    };
+    shrinkInfo();
+    $('#sel-filament', card).addEventListener('change', shrinkInfo);
+    $('#shrink', card).addEventListener('change', persist);
     $$('select', card).forEach((s) => s.addEventListener('change', persist));
     $('#sel-machine', card).addEventListener('change', async () => {
       // refresh compatibility flags for the newly chosen printer
@@ -187,6 +205,7 @@ export class SliceView {
       overrides[i.dataset.ov] = i.value === 'true' ? true : i.value === 'false' ? false : (i.type === 'number' ? Number(i.value) : i.value);
     }
     if (overrides.sparse_infill_density != null) overrides.sparse_infill_density = `${overrides.sparse_infill_density}%`;
+    if (!$('#shrink', card).checked) { overrides.filament_shrink = '100%'; overrides.filament_shrinkage_compensation_z = '100%'; }
     const body = {
       model_id: this.model.id,
       machine: embedded ? null : $('#sel-machine', card).value,
@@ -261,6 +280,7 @@ export class SliceView {
             <div class="muted small">${esc(j.presets.process || 'embedded settings')}</div>
             <div class="muted small">${esc(j.presets.filament || '')}</div>
             <div class="muted small">${esc(j.presets.machine || '')}</div>
+            ${j.request?.overrides?.filament_shrink ? '<span class="badge warn">shrinkage off</span>' : ''}
           </div>
         </div>
         <div class="grid3" style="margin-top:12px">

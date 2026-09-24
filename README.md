@@ -20,30 +20,41 @@ ser webcam og kører macros – alt sammen fra telefonen.
 | **Settings** | Moonraker-URL/API-key, webcam (auto-opdages fra Moonraker), standard-presets, rescan/import af profiler. |
 
 Ekstra: "Del → PocketSlice" fra Android-filhåndteringen/browseren uploader STL'en direkte
-(PWA share target). Der er valgfrit password på appen.
+(PWA share target). Setup-wizard ved første start, password og accentfarve sættes i appen,
+og shrinkage-kompensation kan slås til/fra med én knap pr. slice.
+
+**Ny her? Følg den udførlige guide: [docs/SETUP.md](docs/SETUP.md)** (Proxmox, SSH, telefon,
+profiler, Tailscale – med kommandoer til copy-paste).
 
 ---
 
 ## Krav
 
-* En maskine på hjemmenettet med **Docker** og **x86_64** CPU (mini-PC, NAS, gammel laptop,
-  eller din Windows-PC med Docker Desktop). OrcaSlicers Linux-build findes kun til x86_64, så en
-  Raspberry Pi (arm64) kan **ikke** køre sliceren selv. Klipper-hosten rører vi ikke ved.
+* En maskine på hjemmenettet med **Docker**: en Proxmox LXC/VM, mini-PC, NAS, gammel laptop
+  eller din Windows-PC med Docker Desktop. x86_64 er det sikre valg; OrcaSlicer 2.4+ har også
+  arm64-AppImages, som Dockerfilen prøver at hente på aarch64-maskiner (utestet).
 * Moonraker på Voron'en (det har du allerede, hvis du bruger Mainsail/Fluidd).
 * En kopi af din OrcaSlicer-konfigurationsmappe (se nedenfor).
 
 ## Hurtig start
 
+Én kommando på en Debian/Ubuntu-maskine (fx en Proxmox LXC-container med `nesting=1`):
+
 ```bash
-git clone <dette repo> pocketslice && cd pocketslice
-cp .env.example .env            # sæt MOONRAKER_URL og gerne APP_PASSWORD
-# kopier dine Orca-profiler ind (se næste afsnit) – eller gør det bagefter
+curl -fsSL https://raw.githubusercontent.com/westfrost/Testilento/main/scripts/install.sh | sudo bash
+```
+
+Eller manuelt:
+
+```bash
+git clone https://github.com/westfrost/Testilento.git pocketslice && cd pocketslice
+cp .env.example .env            # sæt MOONRAKER_URL
 docker compose up -d --build    # første build henter OrcaSlicer (~150 MB) og tager nogle minutter
 ```
 
-Åbn `http://<server-ip>:8080` på telefonen → *Settings* → *Test connection* → gem.
-Tilføj siden til hjemmeskærmen ("Add to Home Screen" i Safari / "Install app" i Chrome), så den
-åbner som en rigtig app.
+Åbn `http://<server-ip>:8080` på telefonen. Setup-wizarden starter automatisk (printer, profiler,
+webcam, password). Tilføj siden til hjemmeskærmen ("Add to Home Screen" i Safari / "Install app"
+i Chrome), så den åbner som en rigtig app.
 
 ## Dine OrcaSlicer-profiler
 
@@ -51,7 +62,17 @@ PocketSlice slicer med de samme JSON-presets som OrcaSlicer på din PC. Brugerpr
 gemmer kun *dine ændringer* + et `inherits`-felt, der peger på et systempreset, så appen skal
 have både `user/` og `system/` for at kunne "flade" profilen ud til en komplet config til CLI'en.
 
-Kopier hele mappen (eller kun `user/`, `system/` og `OrcaSlicer.conf`) til `./profiles/`:
+**Nemmest:** åbn appen i Chrome/Edge på PC'en → Settings → *Choose OrcaSlicer folder…* og vælg
+OrcaSlicers konfigurationsmappe. Browseren uploader `user/`, `system/` og `OrcaSlicer.conf`
+direkte – intet at installere. Gentag når du har ændret profiler.
+
+**Orca Cloud (OrcaSlicer 2.4+, eksperimentelt):** har du slået *Sync user presets* til med en
+Orca-konto, kan appen logge ind (e-mail/kodeord eller browser-login) og hente presets fra
+`cloud.orcaslicer.com` – manuelt eller automatisk hvert kvarter/time. API'et er udledt af
+OrcaSlicers kildekode (`OrcaCloudServiceAgent.cpp`) og er ikke officielt; Bambu-kontoens sync er
+lukket og kan ikke bruges.
+
+Alternativt kopieres mappen (eller kun `user/`, `system/` og `OrcaSlicer.conf`) til `./profiles/`:
 
 | OS | OrcaSlicer-konfiguration |
 |----|--------------------------|
@@ -133,7 +154,7 @@ Settings-fane, som gemmer i `/data/settings.json`.
 ## Udvikling
 
 ```bash
-cd backend && pip install -r requirements.txt pytest anyio && python -m pytest   # 20 tests
+cd backend && pip install -r requirements.txt pytest anyio && python -m pytest   # 25 tests
 ./scripts/dev.sh                     # kører appen med en falsk slicer + eksempelprofiler på :8080
 ```
 
@@ -141,6 +162,8 @@ cd backend && pip install -r requirements.txt pytest anyio && python -m pytest  
 * `backend/app/slicer.py` – kører `orca-slicer --load-settings … --load-filaments … --slice 0`,
   finder G-koden (i outputdir eller inde i 3MF'en) og læser tid/filament/thumbnail ud.
 * `backend/app/moonraker.py` – lille async Moonraker-klient.
+* `backend/app/orca_cloud.py` – Orca Cloud-login (Supabase PKCE/password) og `sync/pull`.
+* `scripts/install.sh` – one-shot installer (Docker + clone + build) til Debian/Ubuntu/Proxmox.
 * `frontend/` – ren HTML/CSS/JS uden build-step; three.js er vendoret til STL-preview.
 * `docker-compose.tailscale.yml` – valgfri Tailscale-sidecar med `tailscale serve` for HTTPS.
 

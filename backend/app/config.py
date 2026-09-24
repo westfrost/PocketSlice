@@ -6,6 +6,8 @@ the environment.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 import secrets
@@ -41,7 +43,28 @@ EDITABLE_DEFAULTS: dict[str, Any] = {
     "gcode_subfolder": _env("GCODE_SUBFOLDER", "pocketslice"),
     "auto_arrange": True,
     "auto_orient": False,
+    "shrinkage_default": _env("SHRINKAGE_DEFAULT", "preset"),   # preset | off
+    "accent_color": _env("ACCENT_COLOR", "#ff7a2f"),
+    "setup_done": False,
+    "orca_cloud_auto_sync_minutes": 0,
+    "password_hash": "",   # set from the UI; never sent to the browser
 }
+
+_SECRET_KEYS = {"moonraker_api_key", "password_hash"}
+
+
+def hash_password(password: str, salt: str | None = None) -> str:
+    salt = salt or secrets.token_hex(8)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000).hex()
+    return f"pbkdf2${salt}${digest}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        _, salt, digest = stored.split("$", 2)
+    except ValueError:
+        return False
+    return hmac.compare_digest(hash_password(password, salt), f"pbkdf2${salt}${digest}")
 
 
 @dataclass
@@ -53,9 +76,11 @@ class Settings:
 
     def public(self) -> dict[str, Any]:
         out = dict(self.values)
-        # never leak the API key to the browser, just say whether it is set
+        # never leak secrets to the browser, just say whether they are set
         out["moonraker_api_key_set"] = bool(out.get("moonraker_api_key"))
-        out.pop("moonraker_api_key", None)
+        out["password_set"] = bool(out.get("password_hash")) or bool(app_password())
+        for k in _SECRET_KEYS:
+            out.pop(k, None)
         return out
 
 
@@ -78,13 +103,15 @@ class SettingsStore:
             except (OSError, ValueError):
                 self.settings = Settings()
 
-    def update(self, patch: dict[str, Any]) -> Settings:
+    def update(self, patch: dict[str, Any], _internal: bool = False) -> Settings:
         with self._lock:
             for k, v in patch.items():
                 if k not in EDITABLE_DEFAULTS:
                     continue
-                if k == "moonraker_api_key" and v is None:
+                if k in _SECRET_KEYS and v is None:
                     continue  # "unchanged"
+                if k == "password_hash" and not _internal:
+                    continue  # only settable through the password endpoint
                 self.settings.values[k] = v
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(json.dumps(self.settings.values, indent=2), "utf-8")

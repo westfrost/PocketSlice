@@ -1,9 +1,9 @@
 // PocketSlice service worker: caches the app shell so the PWA opens instantly.
 // API calls are never cached.
-const CACHE = 'pocketslice-v1';
+const CACHE = 'pocketslice-v2';
 const SHELL = [
   '/', '/css/app.css', '/js/app.js', '/js/api.js', '/js/viewer.js',
-  '/js/views/slice.js', '/js/views/printer.js', '/js/views/files.js', '/js/views/settings.js',
+  '/js/views/slice.js', '/js/views/printer.js', '/js/views/files.js', '/js/views/settings.js', '/js/views/setup.js', '/js/views/preset_sources.js',
   '/vendor/three/three.module.js', '/vendor/three/STLLoader.js', '/vendor/three/OrbitControls.js',
   '/icons/favicon.png', '/icons/icon-192.png', '/manifest.webmanifest',
 ];

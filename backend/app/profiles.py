@@ -13,6 +13,7 @@ Expected layout of ``PROFILES_DIR`` (a copy of the OrcaSlicer config dir):
       user/<anything>/{machine,process,filament}/**/*.json
       system/<Vendor>/{machine,process,filament}/**/*.json
       imported/**/*.json              (bundles uploaded through the app)
+      cloud/<type>/*.json             (pulled from Orca Cloud)
 
 System presets are additionally looked up in the profiles shipped with the
 OrcaSlicer build inside the container (``ORCA_SYSTEM_PROFILES``).
@@ -130,7 +131,7 @@ class PresetLibrary:
 
         # user presets: PROFILES_DIR/user/**, PROFILES_DIR/imported/**, and a
         # flat PROFILES_DIR/{machine,process,filament}/** for convenience.
-        user_roots = [self.profiles_dir / "user", self.profiles_dir / "imported"]
+        user_roots = [self.profiles_dir / "user", self.profiles_dir / "imported", self.profiles_dir / "cloud"]
         user_roots += [self.profiles_dir / t for t in PRESET_TYPES]
         for root in user_roots:
             if root.is_dir():
@@ -307,14 +308,17 @@ class PresetLibrary:
         return hint
 
 
-def apply_overrides(config: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
-    """Apply user overrides respecting Orca's value shapes (strings / lists)."""
+def apply_overrides(config: dict[str, Any], overrides: dict[str, Any], force_list: bool = False) -> dict[str, Any]:
+    """Apply user overrides respecting Orca's value shapes (strings / lists).
+
+    Filament configs hold one value per extruder, so ``force_list`` wraps keys
+    that are not present in the config yet."""
     out = dict(config)
     for key, value in overrides.items():
         if value is None or value == "":
             continue
         existing = out.get(key)
-        if isinstance(existing, list):
+        if isinstance(existing, list) or (force_list and existing is None):
             out[key] = [str(value) for _ in existing] if existing else [str(value)]
         elif isinstance(value, bool):
             out[key] = "1" if value else "0"

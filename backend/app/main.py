@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import shutil
 import time
 import uuid
@@ -17,10 +18,12 @@ from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, Up
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from . import config
 from .jobs import JobStore
 from .moonraker import Moonraker, MoonrakerError, stream_url
+from .orca_cloud import OrcaCloud, OrcaCloudError
 from .profiles import PresetLibrary, is_compatible
 from .slicer import OVERRIDE_FIELDS, SUPPORTED_MODEL_EXT, safe_stem
 
@@ -33,14 +36,38 @@ app = FastAPI(title="PocketSlice", version="1.0.0", docs_url="/api/docs", openap
 settings_store = config.SettingsStore(config.DATA_DIR / "settings.json")
 library = PresetLibrary(config.PROFILES_DIR, [config.ORCA_SYSTEM_PROFILES]).scan()
 jobs: JobStore | None = None
+orca_cloud = OrcaCloud(config.DATA_DIR, config.PROFILES_DIR)
 _secret = config.session_secret(config.DATA_DIR)
+_auto_sync_task: asyncio.Task | None = None
 
 
 @app.on_event("startup")
 async def _startup() -> None:
-    global jobs
+    global jobs, _auto_sync_task
     jobs = JobStore(config.DATA_DIR, library)
+    _auto_sync_task = asyncio.get_event_loop().create_task(_auto_sync_loop())
     log.info("Data dir %s, profiles %s, orca %s", config.DATA_DIR, config.PROFILES_DIR, config.ORCA_BIN)
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    if _auto_sync_task:
+        _auto_sync_task.cancel()
+
+
+async def _auto_sync_loop() -> None:
+    """Pull Orca Cloud presets periodically when enabled in settings."""
+    while True:
+        minutes = int(settings_store.settings.get("orca_cloud_auto_sync_minutes") or 0)
+        await asyncio.sleep(max(minutes, 1) * 60 if minutes > 0 else 60)
+        if minutes <= 0 or not orca_cloud.logged_in():
+            continue
+        try:
+            r = await orca_cloud.pull()
+            library.scan()
+            log.info("Orca Cloud auto-sync: %s presets", r["count"])
+        except OrcaCloudError as e:
+            log.warning("Orca Cloud auto-sync failed: %s", e)
 
 
 def moonraker() -> Moonraker:
@@ -52,12 +79,26 @@ def moonraker() -> Moonraker:
 COOKIE = "pocketslice_session"
 
 
+def _auth_enabled() -> bool:
+    return bool(settings_store.settings.get("password_hash")) or bool(config.app_password())
+
+
+def _check_password(password: str) -> bool:
+    stored = settings_store.settings.get("password_hash")
+    if stored:
+        return config.verify_password(password, stored)
+    env = config.app_password()
+    return bool(env) and hmac.compare_digest(password, env)
+
+
 def _token() -> str:
-    return hmac.new(_secret.encode(), b"pocketslice-v1", hashlib.sha256).hexdigest()
+    # derived from the current password so changing it invalidates old sessions
+    material = (settings_store.settings.get("password_hash") or config.app_password() or "").encode()
+    return hmac.new(_secret.encode(), b"pocketslice-v2:" + material, hashlib.sha256).hexdigest()
 
 
 def _authed(request: Request) -> bool:
-    if not config.app_password():
+    if not _auth_enabled():
         return True
     tok = request.cookies.get(COOKIE) or request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     return bool(tok) and hmac.compare_digest(tok, _token())
@@ -74,8 +115,7 @@ class LoginBody(BaseModel):
 
 @app.post("/api/login")
 async def login(body: LoginBody, response: Response) -> dict[str, Any]:
-    pw = config.app_password()
-    if pw and not hmac.compare_digest(body.password, pw):
+    if _auth_enabled() and not _check_password(body.password):
         await asyncio.sleep(0.5)
         raise HTTPException(401, "Wrong password")
     response.set_cookie(COOKIE, _token(), max_age=60 * 60 * 24 * 365, httponly=True, samesite="lax")
@@ -92,7 +132,7 @@ async def logout(response: Response) -> dict[str, Any]:
 async def health(request: Request) -> dict[str, Any]:
     return {
         "ok": True,
-        "auth_required": bool(config.app_password()),
+        "auth_required": _auth_enabled(),
         "authed": _authed(request),
         "orca_bin": config.ORCA_BIN,
         "orca_present": Path(config.ORCA_BIN).exists(),
@@ -115,6 +155,27 @@ async def get_settings() -> dict[str, Any]:
 async def put_settings(body: dict[str, Any]) -> dict[str, Any]:
     s = settings_store.update(body)
     return {"settings": s.public()}
+
+
+class PasswordBody(BaseModel):
+    current_password: str = ""
+    new_password: str = ""
+
+
+@app.post("/api/settings/password", dependencies=P)
+async def set_password(body: PasswordBody, response: Response) -> dict[str, Any]:
+    """Set, change or remove the app password. Empty new password removes it
+    (an APP_PASSWORD from the environment still applies in that case)."""
+    if _auth_enabled() and not _check_password(body.current_password):
+        raise HTTPException(403, "Current password is wrong")
+    if body.new_password and len(body.new_password) < 4:
+        raise HTTPException(400, "Password must be at least 4 characters")
+    settings_store.update({"password_hash": config.hash_password(body.new_password) if body.new_password else ""}, _internal=True)
+    if _auth_enabled():
+        response.set_cookie(COOKIE, _token(), max_age=60 * 60 * 24 * 365, httponly=True, samesite="lax")
+    else:
+        response.delete_cookie(COOKIE)
+    return {"ok": True, "auth_required": _auth_enabled()}
 
 
 @app.get("/api/settings/test-printer", dependencies=P)
@@ -194,6 +255,119 @@ async def presets_import(file: UploadFile = File(...)) -> dict[str, Any]:
             tmp.unlink(missing_ok=True)
     library.scan()
     return {"ok": True, "imported": imported, "counts": library.list()["counts"]}
+
+
+_FOLDER_KEEP = re.compile(r"^(user/.+\.json|system/.+\.json|OrcaSlicer\.conf)$", re.I)
+
+
+@app.post("/api/presets/upload-folder", dependencies=P)
+async def presets_upload_folder(request: Request) -> dict[str, Any]:
+    """Replace user/, system/ and OrcaSlicer.conf with a folder picked in the
+    browser (<input webkitdirectory>). Each part's field name is its relative path."""
+    form = await request.form()
+    staged = config.PROFILES_DIR / ".upload"
+    if staged.exists():
+        shutil.rmtree(staged, ignore_errors=True)
+    staged.mkdir(parents=True)
+    kept = skipped = 0
+    for key, part in form.multi_items():
+        if not isinstance(part, StarletteUploadFile):
+            continue
+        # the browser sends the relative path as the field name (filenames get
+        # their directories stripped by multipart parsers)
+        rel = (key if key not in ("file", "files") else (part.filename or "")).replace("\\", "/").lstrip("/")
+        parts = [x for x in rel.split("/") if x not in ("", ".", "..")]
+        # drop the leading folder name the picker adds (e.g. "OrcaSlicer/")
+        while parts and parts[0].lower() not in ("user", "system") and parts[0] != "OrcaSlicer.conf":
+            parts.pop(0)
+        rel = "/".join(parts)
+        if not rel or not _FOLDER_KEEP.match(rel):
+            skipped += 1
+            continue
+        target = staged / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("wb") as out:
+            while chunk := await part.read(1024 * 1024):
+                out.write(chunk)
+        kept += 1
+    if kept == 0:
+        shutil.rmtree(staged, ignore_errors=True)
+        raise HTTPException(400, "No OrcaSlicer presets found in the selected folder (expected user/ and system/)")
+    for name in ("user", "system", "OrcaSlicer.conf"):
+        src, dst = staged / name, config.PROFILES_DIR / name
+        if not src.exists():
+            continue
+        if dst.is_dir():
+            shutil.rmtree(dst, ignore_errors=True)
+        elif dst.exists():
+            dst.unlink()
+        shutil.move(str(src), str(dst))
+    shutil.rmtree(staged, ignore_errors=True)
+    library.scan()
+    return {"ok": True, "files": kept, "skipped": skipped, "counts": library.list()["counts"]}
+
+
+# ----------------------------------------------------------- orca cloud
+
+
+class CloudLoginBody(BaseModel):
+    email: str
+    password: str
+
+
+class CloudPkceBody(BaseModel):
+    provider: str = "google"
+    redirect: str | None = None
+
+
+class CloudPkceFinishBody(BaseModel):
+    pasted: str
+
+
+@app.get("/api/orca-cloud/status", dependencies=P)
+async def cloud_status() -> dict[str, Any]:
+    return orca_cloud.status()
+
+
+@app.post("/api/orca-cloud/login", dependencies=P)
+async def cloud_login(body: CloudLoginBody) -> dict[str, Any]:
+    try:
+        return await orca_cloud.login_password(body.email.strip(), body.password)
+    except OrcaCloudError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.post("/api/orca-cloud/pkce/start", dependencies=P)
+async def cloud_pkce_start(body: CloudPkceBody) -> dict[str, Any]:
+    try:
+        return orca_cloud.pkce_start(body.provider, body.redirect or "http://localhost:8080/callback")
+    except OrcaCloudError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/orca-cloud/pkce/finish", dependencies=P)
+async def cloud_pkce_finish(body: CloudPkceFinishBody) -> dict[str, Any]:
+    try:
+        return await orca_cloud.pkce_finish(body.pasted)
+    except OrcaCloudError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.post("/api/orca-cloud/pull", dependencies=P)
+async def cloud_pull() -> dict[str, Any]:
+    try:
+        r = await orca_cloud.pull()
+    except OrcaCloudError as e:
+        raise HTTPException(502, str(e))
+    library.scan()
+    r["counts"] = library.list()["counts"]
+    return r
+
+
+@app.post("/api/orca-cloud/logout", dependencies=P)
+async def cloud_logout() -> dict[str, Any]:
+    orca_cloud.logout()
+    return {"ok": True}
 
 
 # --------------------------------------------------------------- models

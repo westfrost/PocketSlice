@@ -1,11 +1,11 @@
 # PocketSlice – OrcaSlicer CLI + FastAPI backend + PWA frontend in one image.
 #
 # Build args let you pin another OrcaSlicer release:
-#   docker build --build-arg ORCA_VERSION=2.3.0 .
+#   docker build --build-arg ORCA_VERSION=2.4.1 .
 #   docker build --build-arg ORCA_APPIMAGE_URL=https://.../OrcaSlicer_Linux_....AppImage .
 FROM ubuntu:24.04
 
-ARG ORCA_VERSION=2.3.0
+ARG ORCA_VERSION=2.4.1
 ARG ORCA_APPIMAGE_URL=""
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -32,8 +32,9 @@ RUN set -eux; \
       candidates="$ORCA_APPIMAGE_URL"; \
     else \
       base="https://github.com/SoftFever/OrcaSlicer/releases/download/v${ORCA_VERSION}"; \
-      candidates="$base/OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage \
-                  $base/OrcaSlicer_Linux_AppImage_Ubuntu2204_V${ORCA_VERSION}.AppImage \
+      arch=""; if [ "$(uname -m)" = "aarch64" ]; then arch="_aarch64"; fi; \
+      candidates="$base/OrcaSlicer_Linux_AppImage_Ubuntu2404${arch}_V${ORCA_VERSION}.AppImage \
+                  $base/OrcaSlicer_Linux_AppImage_Ubuntu2204${arch}_V${ORCA_VERSION}.AppImage \
                   $base/OrcaSlicer_Linux_AppImage_V${ORCA_VERSION}.AppImage \
                   $base/OrcaSlicer_Linux_V${ORCA_VERSION}.AppImage"; \
     fi; \

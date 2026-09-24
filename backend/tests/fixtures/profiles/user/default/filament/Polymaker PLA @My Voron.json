@@ -8,5 +8,8 @@
  ],
  "nozzle_temperature": [
   "220"
+ ],
+ "filament_shrink": [
+  "99.5%"
  ]
 }

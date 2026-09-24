@@ -3,6 +3,7 @@ import { SliceView } from './views/slice.js';
 import { PrinterView } from './views/printer.js';
 import { FilesView } from './views/files.js';
 import { SettingsView } from './views/settings.js';
+import { SetupView } from './views/setup.js';
 
 // ------------------------------------------------------------ helpers
 export const $ = (sel, root = document) => root.querySelector(sel);
@@ -73,7 +74,7 @@ export const state = {
   currentTab: 'slice',
 };
 
-const views = { slice: new SliceView(), printer: new PrinterView(), files: new FilesView(), settings: new SettingsView() };
+const views = { slice: new SliceView(), printer: new PrinterView(), files: new FilesView(), settings: new SettingsView(), setup: new SetupView() };
 let active = null;
 
 async function showTab(name) {
@@ -85,7 +86,7 @@ async function showTab(name) {
   root.innerHTML = '';
   active = views[name];
   try { await active.mount(root); } catch (e) { root.innerHTML = `<div class="card">${esc(e.message)}</div>`; }
-  history.replaceState(null, '', `#${name}`);
+  if (location.hash !== `#${name}`) history.replaceState(null, '', `#${name}`);
 }
 
 // ------------------------------------------------------------ login
@@ -146,10 +147,16 @@ function startPolling() {
 function stopPolling() { clearTimeout(pollTimer); pollTimer = null; }
 
 // ------------------------------------------------------------ boot
+export function applyTheme() {
+  const c = state.settings?.accent_color;
+  if (c && /^#[0-9a-f]{6}$/i.test(c)) document.documentElement.style.setProperty('--accent', c);
+}
+
 export async function reloadSettings() {
   const r = await api.get('/api/settings');
   state.settings = r.settings; state.overrideFields = r.override_fields;
   $('#printer-name').textContent = state.settings.printer_name || 'PocketSlice';
+  applyTheme();
   return state.settings;
 }
 
@@ -159,10 +166,15 @@ async function boot() {
   await reloadSettings();
   startPolling();
   const hash = location.hash.replace('#', '');
+  if (!state.settings.setup_done && hash !== 'setup') { await showTab('setup'); return; }
   await showTab(views[hash] ? hash : 'slice');
 }
 
 $$('.tab').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+window.addEventListener('hashchange', () => {
+  const name = location.hash.replace('#', '');
+  if (views[name] && name !== state.currentTab && state.settings) showTab(name);
+});
 window.addEventListener('auth-required', () => { stopPolling(); showLogin(); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && pollTimer) pollStatus(); });
 
