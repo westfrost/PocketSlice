@@ -288,7 +288,7 @@ export class SliceView {
           <div class="stat"><div class="v">${m.filament_g != null ? m.filament_g.toFixed(0) + ' g' : '–'}</div><div class="k">Filament</div></div>
           <div class="stat"><div class="v">${m.layer_count ?? '–'}</div><div class="k">Layers</div></div>
         </div>
-        <div class="muted small" style="margin-top:8px">${m.layer_height ? `${m.layer_height} mm layers · ` : ''}${m.filament_mm ? `${(m.filament_mm / 1000).toFixed(2)} m · ` : ''}${m.max_z ? `${m.max_z} mm tall · ` : ''}${fmtBytes(m.size)}</div>
+        <div class="muted small" style="margin-top:8px">${m.layer_height ? `${m.layer_height} mm layers · ` : ''}${m.filament_mm ? `${(m.filament_mm / 1000).toFixed(2)} m · ` : ''}${m.max_z ? `${m.max_z} mm tall · ` : ''}${fmtBytes(m.size)}${j.duration ? ` · sliced in ${j.duration < 60 ? Math.round(j.duration) + ' s' : fmtDuration(j.duration)}` : ''}</div>
         <div class="field" style="margin-top:12px"><label>File name on printer</label><input class="input" id="send-name" value="${esc(j.gcode_name)}"></div>
         <div class="grid2" style="margin-top:12px">
           <button class="btn" id="send-btn">Send to printer</button>

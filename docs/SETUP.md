@@ -1,71 +1,71 @@
-# PocketSlice – trin-for-trin opsætning (for alle)
+# PocketSlice – step-by-step setup (for everyone)
 
-Denne guide antager, at du **aldrig** har rørt Docker eller en Linux-server før. Følg den
-oppefra og ned. Alt, der står i en grå boks, kan du kopiere og indsætte direkte.
+This guide assumes you have **never** touched Docker or a Linux server. Follow it top to bottom.
+Everything in a grey box can be copied and pasted as-is.
 
-> **Så kort som muligt:** PocketSlice er en lille hjemmeside, der kører på en computer hjemme
-> hos dig. Telefonen åbner hjemmesiden, du uploader en STL, serveren slicer den med dine
-> OrcaSlicer-profiler og sender G-koden til din printer. Tilføj hjemmesiden til hjemmeskærmen,
-> og den opfører sig som en app.
-
----
-
-## 0. Ordforklaring
-
-| Ord | Betyder |
-|-----|---------|
-| **Server** | Computeren der kører PocketSlice døgnet rundt. En Proxmox-container, en mini-PC, en NAS eller din Windows-PC. |
-| **Proxmox** | Et system til at køre "computere inde i en computer" (containere og virtuelle maskiner). |
-| **Container (LXC)** | En lille, let "computer" inde i Proxmox. Vi laver én til PocketSlice. |
-| **SSH** | En måde at skrive kommandoer til serveren fra din egen PC. Windows har det indbygget (PowerShell). |
-| **Docker** | Pakker PocketSlice + OrcaSlicer i én kasse, så du slipper for at installere noget selv. |
-| **Moonraker** | Den del af Klipper, som Mainsail/Fluidd (og PocketSlice) taler med. Kører på printeren, normalt port 7125. |
-| **IP-adresse** | Serverens "adresse" på hjemmenettet, fx `192.168.1.60`. |
+> **The short version:** PocketSlice is a small website that runs on a computer in your home.
+> Your phone opens the website, you upload an STL, the server slices it with your OrcaSlicer
+> presets and sends the G-code to your printer. Add the website to your home screen and it
+> behaves like an app.
 
 ---
 
-## 1. Hvad du skal bruge
+## 0. Glossary
 
-- En Voron (eller anden printer) med **Klipper + Moonraker**. Hvis du bruger Mainsail eller
-  Fluidd, har du det allerede.
-- En **server** med x86-processor (Intel/AMD). Vi bruger en Proxmox-container i denne guide,
-  men trin 3 og frem er ens for alle andre Linux-maskiner.
-- Din PC med **OrcaSlicer** installeret og dine profiler sat op.
-- Din telefon på samme WiFi som printeren og serveren.
-
-**Find printerens IP-adresse nu.** Åbn Mainsail/Fluidd i browseren og kig i adresselinjen. Står
-der fx `http://192.168.1.50`, er Moonraker-adressen `http://192.168.1.50:7125`. Skriv den ned.
+| Word | Meaning |
+|------|---------|
+| **Server** | The computer that runs PocketSlice around the clock. A Proxmox container, a mini PC, a NAS or your Windows PC. |
+| **Proxmox** | Software for running "computers inside a computer" (containers and virtual machines). |
+| **Container (LXC)** | A small, lightweight "computer" inside Proxmox. We create one for PocketSlice. |
+| **SSH** | A way to type commands into the server from your own PC. Windows has it built in (PowerShell). |
+| **Docker** | Packs PocketSlice + OrcaSlicer into one box so you never install anything by hand. |
+| **Moonraker** | The part of Klipper that Mainsail/Fluidd (and PocketSlice) talk to. Runs on the printer, normally on port 7125. |
+| **IP address** | The server's "address" on your home network, e.g. `192.168.1.60`. |
 
 ---
 
-## 2. Lav en container i Proxmox
+## 1. What you need
 
-Alle kommandoer i dette trin skrives i **Proxmox' egen shell**: Log ind på Proxmox' web-side
-(`https://<proxmox-ip>:8006`), klik på serveren i venstre side (navnet under "Datacenter"), og
-klik på **Shell** øverst til højre. Der åbner et sort vindue – det er her, du indsætter.
+- A Voron (or any printer) running **Klipper + Moonraker**. If you use Mainsail or Fluidd you already have this.
+- A **server** with an x86 CPU (Intel/AMD). This guide uses a Proxmox container, but step 3
+  onwards is identical on any other Linux machine.
+- Your PC with **OrcaSlicer** installed and your presets set up.
+- Your phone on the same Wi-Fi as the printer and the server.
 
-### 2.1 Hent en Debian-skabelon
+**Find your printer's IP address now.** Open Mainsail/Fluidd in the browser and look at the
+address bar. If it says `http://192.168.1.50`, the Moonraker address is
+`http://192.168.1.50:7125`. Write it down.
+
+---
+
+## 2. Create a container in Proxmox
+
+All commands in this step are typed into **Proxmox's own shell**: log in to the Proxmox web page
+(`https://<proxmox-ip>:8006`), click your node on the left (the name under "Datacenter"), then
+click **Shell** at the top right. A black window opens; that is where you paste.
+
+### 2.1 Download a Debian template
 
 ```bash
 pveam update
 pveam available | grep debian-12-standard
 ```
 
-Den sidste linje viser noget i stil med `debian-12-standard_12.7-1_amd64.tar.zst`. Hent den
-(ret versionsnummeret, hvis dit er et andet):
+The last line shows something like `debian-12-standard_12.7-1_amd64.tar.zst`. Download it
+(adjust the version number if yours differs):
 
 ```bash
 pveam download local debian-12-standard_12.7-1_amd64.tar.zst
 ```
 
-### 2.2 Opret containeren
+### 2.2 Create the container
 
-Kopiér hele blokken. Ret kun tallet efter `CTID=` hvis 200 allerede er brugt, og ret
-`PASSWORD=` til et kodeord, du kan huske (det er root-kodeordet til containeren).
+Copy the whole block. Only change the number after `CTID=` if 200 is already in use, and change
+`PASSWORD=` to a password you can remember (it becomes the container's root password).
 
 ```bash
 CTID=200
-PASSWORD='SkiftMigNu123'
+PASSWORD='ChangeMeNow123'
 TEMPLATE=$(ls /var/lib/vz/template/cache/ | grep debian-12-standard | head -n1)
 
 pct create $CTID local:vztmpl/$TEMPLATE \
@@ -82,49 +82,52 @@ sleep 5
 pct exec $CTID -- hostname -I
 ```
 
-Den sidste kommando skriver containerens **IP-adresse** (fx `192.168.1.60`). Skriv den ned – det
-er din *server-IP* i resten af guiden.
+The last command prints the container's **IP address** (e.g. `192.168.1.60`). Write it down;
+it is your *server IP* for the rest of this guide.
 
-> Bruger din Proxmox `local-zfs` eller en anden lagring end `local-lvm`? Ret `--rootfs local-lvm:32`
-> til dit navn (ses under Datacenter → Storage). `32` er GB diskplads.
+> Does your Proxmox use `local-zfs` or another storage name instead of `local-lvm`? Change
+> `--rootfs local-lvm:32` to your storage name (see Datacenter → Storage). `32` is GB of disk.
 
-> **Hvorfor `nesting=1,keyctl=1`?** Docker inde i en container kræver de to flag. Uden dem fejler
-> Docker med en uforståelig fejl.
+> **Why `nesting=1,keyctl=1`?** Docker inside a container needs those two flags. Without them
+> Docker fails with a confusing error.
 
-### 2.3 Gå ind i containeren
+> **More cores = faster slicing.** `--cores 4` is a good start; give it 6–8 if your Proxmox host
+> has them to spare. See "Slicing speed" in the README.
 
-Stadig i Proxmox-shellen:
+### 2.3 Enter the container
+
+Still in the Proxmox shell:
 
 ```bash
 pct enter 200
 ```
 
-Prompten skifter til `root@pocketslice:~#`. Nu er du "inde i serveren". Fortsæt til trin 3.
+The prompt changes to `root@pocketslice:~#`. You are now "inside the server". Continue with step 3.
 
-*(Alternativ til `pct enter`: fra din PC kan du bruge SSH – se trin 7.)*
+*(Alternative to `pct enter`: use SSH from your PC, see step 7.)*
 
 ---
 
-## 3. Installer PocketSlice (én kommando)
+## 3. Install PocketSlice (one command)
 
-Indsæt denne ene linje i containeren (eller på enhver anden Debian/Ubuntu-maskine):
+Paste this single line inside the container (or on any other Debian/Ubuntu machine):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/westfrost/Testilento/main/scripts/install.sh | bash
 ```
 
-Scriptet:
+The script:
 
-1. installerer Docker,
-2. henter PocketSlice til `/opt/pocketslice`,
-3. spørger om printerens Moonraker-adresse (skriv fx `http://192.168.1.50:7125` og tryk Enter),
-4. bygger appen – **det tager 3–10 minutter**, fordi OrcaSlicer (ca. 150 MB) hentes,
-5. starter appen og skriver adressen, du skal åbne.
+1. installs Docker,
+2. downloads PocketSlice to `/opt/pocketslice`,
+3. asks for your printer's Moonraker address (type e.g. `http://192.168.1.50:7125` and press Enter),
+4. builds the app – **this takes 3–10 minutes** because OrcaSlicer (about 150 MB) is downloaded,
+5. starts the app and prints the address to open.
 
-Når du ser `PocketSlice is running`, er du færdig med serveren. Kører noget galt, så kig i
-afsnit 9 (Fejlfinding).
+When you see `PocketSlice is running`, the server part is done. If something goes wrong, see
+section 9 (Troubleshooting).
 
-Tjek at det virker – der skal komme `{"ok":true, ...}` tilbage:
+Check that it works – you should get `{"ok":true, ...}` back:
 
 ```bash
 curl -s http://localhost:8080/api/health
@@ -132,143 +135,145 @@ curl -s http://localhost:8080/api/health
 
 ---
 
-## 4. Første opsætning på telefonen (wizard)
+## 4. First-time setup on the phone (wizard)
 
-1. Åbn browseren på telefonen og gå til **`http://<server-ip>:8080`** (fx `http://192.168.1.60:8080`).
-2. Opsætningsguiden starter selv. Den har 5 trin:
+1. Open the browser on your phone and go to **`http://<server-ip>:8080`** (e.g. `http://192.168.1.60:8080`).
+2. The setup wizard starts by itself. It has 5 steps:
 
-   | Trin | Hvad du gør |
+   | Step | What you do |
    |------|-------------|
-   | **1 Printer** | Skriv et navn og Moonraker-adressen. Tryk **Test connection** – der skal stå *Connected*. |
-   | **2 Presets** | Her skal dine OrcaSlicer-profiler ind. Se trin 5 nedenfor – det gøres nemmest fra PC'en. Du kan springe det over nu og gøre det bagefter. |
-   | **3 Webcam** | Har du et kamera i Mainsail/Fluidd, står det på listen – tryk på det. Ellers bare **Continue**. |
-   | **4 Password** | Sæt et kodeord. Alle der kan åbne siden, kan starte og stoppe print. |
-   | **5 Done** | Tryk **Start slicing**. |
+   | **1 Printer** | Type a name and the Moonraker address. Tap **Test connection**; it must say *Connected*. |
+   | **2 Presets** | Your OrcaSlicer presets go in here. See step 5 below; it is easiest from the PC. You can skip it now and do it later. |
+   | **3 Webcam** | If Mainsail/Fluidd has a camera, it is listed; tap it. Otherwise just **Continue**. |
+   | **4 Password** | Set a password. Anyone who can open the page can start and stop prints. |
+   | **5 Done** | Tap **Start slicing**. |
 
-3. Guiden kan altid køres igen: **Settings → Run setup wizard**.
+3. The wizard can be run again at any time: **Settings → Run setup wizard**.
 
 ---
 
-## 5. Få dine OrcaSlicer-profiler ind
+## 5. Get your OrcaSlicer presets in
 
-PocketSlice slicer med **præcis** de profiler, du har i OrcaSlicer. Der er tre måder – vælg **A**,
-hvis du kan.
+PocketSlice slices with **exactly** the presets you have in OrcaSlicer. There are three ways;
+pick **A** if you can.
 
-### A · Upload mappen fra PC'en (anbefalet, 1 minut)
+### A · Upload the folder from your PC (recommended, 1 minute)
 
-1. På din **PC** (den med OrcaSlicer): åbn Chrome eller Edge og gå til `http://<server-ip>:8080`.
-2. Gå til **Settings** (tandhjulet nederst) → afsnittet **OrcaSlicer presets** → knappen
+1. On your **PC** (the one with OrcaSlicer): open Chrome or Edge and go to `http://<server-ip>:8080`.
+2. Go to **Settings** (the gear at the bottom) → section **OrcaSlicer presets** → button
    **Choose OrcaSlicer folder…**
-3. Vælg OrcaSlicers konfigurationsmappe:
+3. Select OrcaSlicer's configuration folder:
 
-   | OS | Mappe |
-   |----|-------|
-   | Windows | Skriv `%APPDATA%\OrcaSlicer` i adresselinjen i fil-vælgeren og tryk Enter, klik derefter **Upload/Vælg mappe** |
-   | macOS | `~/Library/Application Support/OrcaSlicer` (tryk ⌘⇧G i dialogen og indsæt stien) |
+   | OS | Folder |
+   |----|--------|
+   | Windows | Type `%APPDATA%\OrcaSlicer` in the file picker's address bar, press Enter, then click **Upload / Select folder** |
+   | macOS | `~/Library/Application Support/OrcaSlicer` (press ⌘⇧G in the dialog and paste the path) |
    | Linux | `~/.config/OrcaSlicer` |
 
-4. Browseren advarer måske "Upload 1.234 filer til denne side?" – tryk **Upload**. Kun
-   `user/`, `system/` og `OrcaSlicer.conf` bliver brugt; resten smides væk.
-5. Der står nu fx *1 printer · 4 process · 12 filament*. Færdig. **Gentag trin 3–4, hver gang du
-   har ændret profiler i OrcaSlicer.**
+4. The browser may warn "Upload 1,234 files to this site?"; click **Upload**. Only `user/`,
+   `system/` and `OrcaSlicer.conf` are used; everything else is discarded.
+5. It now says e.g. *1 printer · 4 process · 12 filament*. Done. **Repeat steps 3–4 whenever you
+   change presets in OrcaSlicer.**
 
-### B · Orca Cloud (OrcaSlicer 2.4 eller nyere, eksperimentel)
+### B · Orca Cloud (OrcaSlicer 2.4 or newer, experimental)
 
-Hvis du i OrcaSlicer har slået *Sync user presets* til og er logget ind med en **Orca-konto**
-(ikke Bambu-konto), kan PocketSlice hente profilerne direkte fra skyen:
+If you enabled *Sync user presets* in OrcaSlicer and are signed in with an **Orca account**
+(not a Bambu account), PocketSlice can pull the presets straight from the cloud:
 
-1. Settings → **B · Orca Cloud** → skriv e-mail og kodeord til Orca-kontoen → **Sign in**.
-   Har du oprettet kontoen med Google/GitHub, så brug **Use the browser login** og følg de tre
-   punkter på skærmen (du ender på en side, der ikke kan åbnes – kopiér adressen og indsæt den).
-2. Tryk **Sync now**. Vælg evt. **Every hour**, så det sker automatisk.
+1. Settings → **B · Orca Cloud** → enter the Orca account's email and password → **Sign in**.
+   If you created the account with Google/GitHub, use **Use the browser login** and follow the
+   three points on screen (you end up on a page that cannot load; copy its address and paste it).
+2. Tap **Sync now**. Optionally choose **Every hour** to keep it automatic.
 
-> Orca Cloud-API'et er ikke officielt dokumenteret. Virker det ikke, så brug metode A.
-> Bruger du Bambu-kontoens sync i Orca, kan det **ikke** hentes (lukket system) – brug A.
+> The Orca Cloud API is not officially documented. If it does not work, use method A.
+> If you use Bambu account sync in Orca it **cannot** be pulled (closed system); use A.
 
-### C · Eksportér enkelte profiler (virker fra telefonen)
+### C · Export single presets (works from the phone)
 
-I OrcaSlicer: højreklik på et preset → **Export** → gem filen (`.orca_printer` /
-`.orca_filament`). Send filen til telefonen og upload den under Settings → **C · Import
+In OrcaSlicer: right-click a preset → **Export** → save the file (`.orca_printer` /
+`.orca_filament`). Send the file to your phone and upload it under Settings → **C · Import
 preset file…**
 
 ---
 
-## 6. Slice og print
+## 6. Slice and print
 
-1. **Slice**-fanen → **Add a model** → vælg en STL (eller del filen til PocketSlice fra en anden app på Android).
-2. Vælg **Printer / Process / Filament**. Appen husker dit valg.
-3. **Shrinkage compensation**: knappen viser, hvad filament-profilen har (fx *XY 99.5 %*).
-   Slå den fra, hvis du vil printe uden kompensation. Standardvalget kan sættes under Settings → Slicing defaults.
-4. **Quick overrides** (valgfrit): laghøjde, infill, supports, temperaturer m.m. Tomme felter = profilens værdi.
-5. Tryk **Slice**. Du får tid, gram, lag og et billede.
-6. **Print now** sender filen til printeren og starter. **Send to printer** uploader kun.
-7. **Printer**-fanen viser fremdrift, temperaturer, kamera og knapper til pause/stop.
+1. **Slice** tab → **Add a model** → pick an STL (on Android you can also share a file to PocketSlice from any app).
+2. Choose **Printer / Process / Filament**. The app remembers your choice.
+3. **Shrinkage compensation**: the switch shows what the filament preset contains (e.g. *XY 99.5 %*).
+   Turn it off to print without compensation. The default can be set under Settings → Slicing defaults.
+4. **Quick overrides** (optional): layer height, infill, supports, temperatures, etc. Empty fields = the preset's value.
+5. Tap **Slice**. You get print time, grams, layers and a picture, plus how long the slice took.
+6. **Print now** sends the file to the printer and starts. **Send to printer** only uploads.
+7. The **Printer** tab shows progress, temperatures, camera and pause/stop buttons.
 
-**Tilføj til hjemmeskærm:** iPhone: Del-ikonet → *Føj til hjemmeskærm*. Android: menuen ⋮ →
-*Installér app* / *Føj til startskærm*.
+**Add to home screen:** iPhone: Share icon → *Add to Home Screen*. Android: menu ⋮ →
+*Install app* / *Add to Home screen*.
 
 ---
 
-## 7. SSH fra din PC (i stedet for Proxmox-shellen)
+## 7. SSH from your PC (instead of the Proxmox shell)
 
-Så kan du styre serveren fra PowerShell/Terminal på PC'en. Kodeordet er det, du satte i trin 2.2.
+Lets you control the server from PowerShell/Terminal on the PC. The password is the one you set
+in step 2.2.
 
 ```powershell
 ssh root@192.168.1.60
 ```
 
-Skriv `yes` første gang. Nyttige kommandoer, når du er inde:
+Type `yes` the first time. Useful commands once you are in:
 
 ```bash
-# Se om PocketSlice kører
+# Is PocketSlice running?
 docker ps
 
-# Se log (Ctrl+C for at stoppe)
+# Show the log (Ctrl+C to stop)
 docker logs -f pocketslice
 
-# Genstart appen
+# Restart the app
 cd /opt/pocketslice && docker compose restart
 
-# Opdater til nyeste version
+# Update to the latest version
 bash /opt/pocketslice/scripts/install.sh
 
-# Skift Moonraker-adresse eller port og genstart
+# Change the Moonraker address or port, then restart
 nano /opt/pocketslice/.env
 cd /opt/pocketslice && docker compose up -d
 ```
 
 ---
 
-## 8. Adgang udefra (når du ikke er hjemme) – Tailscale, gratis
+## 8. Access from outside your home – Tailscale, free
 
-Åbn **aldrig** porte i routeren. Tailscale laver et privat netværk mellem dine enheder.
+**Never** open ports on your router. Tailscale creates a private network between your devices.
 
-1. Opret en gratis konto på <https://tailscale.com> og installér Tailscale-appen på telefonen. Log ind.
-2. Lav en nøgle: <https://login.tailscale.com/admin/settings/keys> → **Generate auth key** → slå
-   *Reusable* til → kopiér nøglen (starter med `tskey-auth-`).
-3. Slå **MagicDNS** og **HTTPS Certificates** til under <https://login.tailscale.com/admin/dns>.
-4. På serveren (SSH eller `pct enter`):
+1. Create a free account at <https://tailscale.com> and install the Tailscale app on your phone. Sign in.
+2. Create a key: <https://login.tailscale.com/admin/settings/keys> → **Generate auth key** →
+   enable *Reusable* → copy the key (starts with `tskey-auth-`).
+3. Enable **MagicDNS** and **HTTPS Certificates** at <https://login.tailscale.com/admin/dns>.
+4. On the server (SSH or `pct enter`):
 
    ```bash
    cd /opt/pocketslice
    nano .env
    ```
 
-   Find linjen `TS_AUTHKEY=` og indsæt nøglen, så der står `TS_AUTHKEY=tskey-auth-....`.
-   Gem med `Ctrl+O`, Enter, luk med `Ctrl+X`.
+   Find the line `TS_AUTHKEY=` and paste the key so it reads `TS_AUTHKEY=tskey-auth-....`.
+   Save with `Ctrl+O`, Enter, and exit with `Ctrl+X`.
 
-5. Start med Tailscale-opsætningen:
+5. Start with the Tailscale configuration:
 
    ```bash
    docker compose -f docker-compose.yml -f docker-compose.tailscale.yml up -d --build
    ```
 
-6. Efter et minut findes appen på **`https://pocketslice.<dit-tailnet>.ts.net`** (navnet ses i
-   Tailscale-appen under *Machines*). Åbn den på telefonen og tilføj til hjemmeskærmen igen –
-   den adresse virker både hjemme og ude.
+6. After about a minute the app is at **`https://pocketslice.<your-tailnet>.ts.net`** (the name
+   is shown in the Tailscale app under *Machines*). Open it on the phone and add it to the home
+   screen again; that address works both at home and away.
 
-> Kører Tailscale i en Proxmox-container, skal containeren have adgang til `/dev/net/tun`. Kør
-> dette **i Proxmox-shellen** (ikke inde i containeren), ret `200` til dit CTID, og genstart containeren:
+> If Tailscale runs inside a Proxmox container, the container needs access to `/dev/net/tun`.
+> Run this **in the Proxmox shell** (not inside the container), change `200` to your CTID, and
+> reboot the container:
 >
 > ```bash
 > echo 'lxc.cgroup2.devices.allow: c 10:200 rwm' >> /etc/pve/lxc/200.conf
@@ -278,39 +283,40 @@ cd /opt/pocketslice && docker compose up -d
 
 ---
 
-## 9. Fejlfinding
+## 9. Troubleshooting
 
-| Problem | Løsning |
-|---------|---------|
-| `Cannot reach Moonraker` / *Offline* øverst | Brug printerens **IP** i stedet for `voron.local` (Docker kan ikke altid slå `.local`-navne op). Settings → Moonraker URL → Test connection. |
-| Wizarden siger *Connected*, men Files er tom | Normalt. Der ligger ingen G-kode i Moonrakers `gcodes`-mappe endnu. |
-| *Preset X inherits Y which was not found* | Du har kun uploadet `user/`. Upload hele OrcaSlicer-mappen igen (metode A), så `system/` kommer med. |
-| Slice fejler | Tryk **Slicer log** på jobbet. Fejlkoder oversættes (fx *Object is too large for the print bed*). |
-| `docker: permission denied` / Docker starter ikke i LXC | Containeren mangler `nesting=1,keyctl=1`. I Proxmox-shellen: `pct set 200 --features nesting=1,keyctl=1 && pct reboot 200`. |
-| Build fejler ved *Could not download OrcaSlicer* | Filnavnet på GitHub er ændret. Find nyeste Linux-AppImage på <https://github.com/SoftFever/OrcaSlicer/releases>, kopiér linket og kør: `cd /opt/pocketslice && docker compose build --build-arg ORCA_APPIMAGE_URL=<link> && docker compose up -d` |
-| Glemt app-kodeord | På serveren: `docker exec pocketslice sh -c 'sed -i "s/\"password_hash\": \".*\"/\"password_hash\": \"\"/" /data/settings.json'` og `docker compose restart`. |
-| Webcam vises ikke | Skriv hele adressen (fx `http://192.168.1.50/webcam/?action=stream`) i Settings → Webcam. |
-| Telefonen kan ikke åbne `http://<ip>:8080` | Er telefonen på samme WiFi? Kører containeren (`pct list` i Proxmox)? Prøv fra PC'en først. |
+| Problem | Fix |
+|---------|-----|
+| `Cannot reach Moonraker` / *Offline* at the top | Use the printer's **IP** instead of `voron.local` (Docker cannot always resolve `.local` names). Settings → Moonraker URL → Test connection. |
+| Wizard says *Connected* but Files is empty | Normal. There is no G-code in Moonraker's `gcodes` folder yet. |
+| *Preset X inherits Y which was not found* | You only uploaded `user/`. Upload the whole OrcaSlicer folder again (method A) so `system/` comes along. |
+| Slicing fails | Tap **Slicer log** on the job. Error codes are translated (e.g. *Object is too large for the print bed*). |
+| `docker: permission denied` / Docker will not start in the LXC | The container is missing `nesting=1,keyctl=1`. In the Proxmox shell: `pct set 200 --features nesting=1,keyctl=1 && pct reboot 200`. |
+| Build fails with *Could not download OrcaSlicer* | The file name on GitHub changed. Find the newest Linux AppImage at <https://github.com/SoftFever/OrcaSlicer/releases>, copy the link and run: `cd /opt/pocketslice && docker compose build --build-arg ORCA_APPIMAGE_URL=<link> && docker compose up -d` |
+| Forgot the app password | On the server: `docker exec pocketslice sh -c 'sed -i "s/\"password_hash\": \".*\"/\"password_hash\": \"\"/" /data/settings.json'` then `docker compose restart`. |
+| Webcam does not show | Enter the full address (e.g. `http://192.168.1.50/webcam/?action=stream`) under Settings → Webcam. |
+| The phone cannot open `http://<ip>:8080` | Is the phone on the same Wi-Fi? Is the container running (`pct list` in Proxmox)? Try from the PC first. |
+| Slicing is slow | Give the container more cores (`pct set 200 --cores 8`) and check nothing else hogs the Proxmox host. See "Slicing speed" in the README. |
 
-Se hele loggen med `docker logs --tail 200 pocketslice`.
+See the full log with `docker logs --tail 200 pocketslice`.
 
 ---
 
-## 10. Snydeark – alt på ét sted
+## 10. Cheat sheet – everything in one place
 
 ```bash
-# --- Proxmox-shell -------------------------------------------------------
-pct list                      # alle containere
+# --- Proxmox shell --------------------------------------------------------
+pct list                      # all containers
 pct start 200 / pct stop 200  # start/stop
-pct enter 200                 # "gå ind" i containeren
+pct enter 200                 # "step into" the container
 
-# --- Inde i containeren / på serveren -------------------------------------
-curl -fsSL https://raw.githubusercontent.com/westfrost/Testilento/main/scripts/install.sh | bash   # installer / opdater
-docker ps                                     # kører den?
+# --- Inside the container / on the server ---------------------------------
+curl -fsSL https://raw.githubusercontent.com/westfrost/Testilento/main/scripts/install.sh | bash   # install / update
+docker ps                                     # is it running?
 docker logs -f pocketslice                    # log
-cd /opt/pocketslice && docker compose restart # genstart
-cd /opt/pocketslice && docker compose down    # stop helt
-nano /opt/pocketslice/.env                    # indstillinger (Moonraker, port, Tailscale-nøgle)
+cd /opt/pocketslice && docker compose restart # restart
+cd /opt/pocketslice && docker compose down    # stop completely
+nano /opt/pocketslice/.env                    # settings (Moonraker, port, Tailscale key)
 ```
 
-Appen: `http://<server-ip>:8080` · Settings → **Run setup wizard** kører guiden igen.
+The app: `http://<server-ip>:8080` · Settings → **Run setup wizard** runs the guide again.
