@@ -88,13 +88,18 @@ async def test_upload_slice_and_send(client, monkeypatch):
 @pytest.mark.anyio
 async def test_slice_failure_reports_error(client, monkeypatch):
     c, _ = client
-    monkeypatch.setenv("FAKE_ORCA_FAIL", "16")
+    monkeypatch.setenv("FAKE_ORCA_FAIL", "156")   # 256 - 100 = CLI_SLICING_ERROR
     model = (await c.post("/api/models", files={"file": ("a.stl", b"solid")})).json()
     presets = (await c.get("/api/presets")).json()
     job = (await c.post("/api/jobs", json={"model_id": model["id"], **presets["defaults"]})).json()
     job = await wait_job(c, job["id"])
-    assert job["status"] == "error" and "Slicing failed" in job["error"]
+    assert job["status"] == "error" and "Failed slicing the model" in job["error"]
     assert "simulated failure" in job["log_tail"]
+
+    monkeypatch.setenv("FAKE_ORCA_FAIL", "239")   # -17 = process not compatible with printer
+    job = (await c.post("/api/jobs", json={"model_id": model["id"], **presets["defaults"]})).json()
+    job = await wait_job(c, job["id"])
+    assert "not compatible with the process preset" in job["error"]
 
 
 @pytest.mark.anyio

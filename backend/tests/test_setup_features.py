@@ -185,3 +185,6 @@ async def test_shrinkage_override_reaches_filament_config(client, env):
     proc = json.loads((env["data"] / "jobs" / job["id"] / "process.json").read_text())
     assert fil["filament_shrink"] == ["100%"] and fil["filament_shrinkage_compensation_z"] == ["100%"]
     assert "filament_shrink" not in proc
+    # the chosen pairing is declared compatible so the CLI does not exit with -17
+    assert proc["compatible_printers"] == ["My Voron 2.4"] and fil["compatible_printers"] == ["My Voron 2.4"]
+    assert proc["compatible_printers_condition"] == ""
