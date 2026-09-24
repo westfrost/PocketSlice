@@ -37,9 +37,11 @@ presets, Tailscale, with copy-paste commands).
 
 ## Quick start
 
-One command on a Debian/Ubuntu machine (e.g. a Proxmox LXC container with `nesting=1`):
+One command on a Debian/Ubuntu machine (e.g. a Proxmox LXC container with `nesting=1`).
+A fresh Debian container has no `curl`, so install it first:
 
 ```bash
+apt-get update && apt-get install -y curl
 curl -fsSL https://raw.githubusercontent.com/westfrost/PocketSlice/main/scripts/install.sh | sudo bash
 ```
 

@@ -108,7 +108,20 @@ The prompt changes to `root@pocketslice:~#`. You are now "inside the server". Co
 
 ---
 
-## 3. Install PocketSlice (one command)
+## 3. Install PocketSlice
+
+### 3.1 Install `curl` first (a fresh Debian container does not have it)
+
+Paste this inside the container. It updates the package list and installs `curl`, the tool that
+downloads the installer:
+
+```bash
+apt-get update && apt-get install -y curl
+```
+
+If you see `curl: command not found` anywhere later, this step was skipped.
+
+### 3.2 Run the installer (one command)
 
 Paste this single line inside the container (or on any other Debian/Ubuntu machine):
 
@@ -291,6 +304,7 @@ cd /opt/pocketslice && docker compose up -d
 | Wizard says *Connected* but Files is empty | Normal. There is no G-code in Moonraker's `gcodes` folder yet. |
 | *Preset X inherits Y which was not found* | You only uploaded `user/`. Upload the whole OrcaSlicer folder again (method A) so `system/` comes along. |
 | Slicing fails | Tap **Slicer log** on the job. Error codes are translated (e.g. *Object is too large for the print bed*). |
+| `curl: command not found` | Run `apt-get update && apt-get install -y curl` first (step 3.1). |
 | `docker: permission denied` / Docker will not start in the LXC | The container is missing `nesting=1,keyctl=1`. In the Proxmox shell: `pct set 200 --features nesting=1,keyctl=1 && pct reboot 200`. |
 | Build fails with *Could not download OrcaSlicer* | The file name on GitHub changed. Find the newest Linux AppImage at <https://github.com/SoftFever/OrcaSlicer/releases>, copy the link and run: `cd /opt/pocketslice && docker compose build --build-arg ORCA_APPIMAGE_URL=<link> && docker compose up -d` |
 | Forgot the app password | On the server: `docker exec pocketslice sh -c 'sed -i "s/\"password_hash\": \".*\"/\"password_hash\": \"\"/" /data/settings.json'` then `docker compose restart`. |
@@ -311,6 +325,7 @@ pct start 200 / pct stop 200  # start/stop
 pct enter 200                 # "step into" the container
 
 # --- Inside the container / on the server ---------------------------------
+apt-get update && apt-get install -y curl      # only once, on a fresh container
 curl -fsSL https://raw.githubusercontent.com/westfrost/PocketSlice/main/scripts/install.sh | bash   # install / update
 docker ps                                     # is it running?
 docker logs -f pocketslice                    # log
