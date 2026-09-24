@@ -7,8 +7,8 @@ Reverse-engineered from OrcaSlicer's ``src/slic3r/Utils/OrcaCloudServiceAgent.cp
   ``http://localhost:<port>/callback`` redirect, then exchanges the code at
   ``POST /auth/v1/token?grant_type=pkce`` with ``{auth_code, code_verifier}``.
   Sessions are kept alive with ``grant_type=refresh_token``.
-* Presets are pulled from ``GET https://cloud.orcaslicer.com/api/v1/sync/pull``
-  (``Authorization: Bearer <access_token>``) which returns
+* Presets are pulled from ``GET https://api.orcaslicer.com/api/v1/sync/pull``
+  (``Authorization: Bearer <access_token>`` plus the ``apikey`` header) which returns
   ``{"next_cursor": int, "upserts": [{"id","name","updated_time","content": {...}}], "deletes": [...]}``
   where ``content`` is the preset JSON exactly as stored in a user preset file.
 
@@ -36,8 +36,11 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-AUTH_URL = os.environ.get("ORCA_AUTH_URL", "https://auth.orcaslicer.com")
-CLOUD_URL = os.environ.get("ORCA_CLOUD_URL", "https://cloud.orcaslicer.com")
+AUTH_URL = os.environ.get("ORCA_AUTH_URL", "https://auth.orcaslicer.com").rstrip("/")
+# OrcaSlicer's api_base_url ("api.orcaslicer.com"); cloud.orcaslicer.com only hosts the web UI/login page.
+CLOUD_URL = os.environ.get("ORCA_API_URL", os.environ.get("ORCA_CLOUD_URL", "https://api.orcaslicer.com")).rstrip("/")
+if not CLOUD_URL.startswith("http"):
+    CLOUD_URL = "https://" + CLOUD_URL
 PUB_KEY = os.environ.get("ORCA_PUB_KEY", "sb_publishable_lvVe_whOi80SU9BPSxM1kA_tbt9AbR_")
 TOKEN_PATH = "/auth/v1/token"
 AUTHORIZE_PATH = "/auth/v1/authorize"
@@ -49,6 +52,16 @@ TYPE_DIRS = {"machine": "machine", "process": "process", "print": "process", "fi
 
 class OrcaCloudError(Exception):
     pass
+
+
+def _json_or_error(r: httpx.Response, what: str) -> Any:
+    """Parse a JSON body or raise a readable OrcaCloudError (HTML error pages etc.)."""
+    ctype = r.headers.get("content-type", "")
+    try:
+        return r.json()
+    except ValueError:
+        snippet = re.sub(r"\s+", " ", r.text[:200]).strip()
+        raise OrcaCloudError(f"{what}: {r.status_code} from {r.url.host} was not JSON ({ctype or 'no content-type'}): {snippet!r}")
 
 
 def _b64url(data: bytes) -> str:
@@ -94,7 +107,7 @@ class OrcaCloud:
             "last_sync_count": self.state.get("last_sync_count"),
             "last_error": self.state.get("last_error"),
             "auth_url": AUTH_URL,
-            "cloud_url": CLOUD_URL,
+            "api_url": CLOUD_URL,
         }
 
     def logout(self) -> None:
@@ -126,14 +139,18 @@ class OrcaCloud:
         except httpx.HTTPError as e:
             raise OrcaCloudError(f"Cannot reach {AUTH_URL}: {e.__class__.__name__}") from e
         if r.status_code >= 400:
-            msg = r.text[:300]
+            msg = re.sub(r"\s+", " ", r.text[:300]).strip()
             try:
                 j = r.json()
-                msg = j.get("error_description") or j.get("msg") or j.get("error_code") or j.get("error") or msg
+                if isinstance(j, dict):
+                    msg = j.get("error_description") or j.get("msg") or j.get("error_code") or j.get("error") or msg
             except ValueError:
                 pass
             raise OrcaCloudError(f"Orca Cloud login failed ({r.status_code}): {msg}")
-        return r.json()
+        session = _json_or_error(r, "Login")
+        if not isinstance(session, dict):
+            raise OrcaCloudError("Login response was not an object")
+        return session
 
     # -------------------------------------------------------------- login
     async def login_password(self, email: str, password: str) -> dict[str, Any]:
@@ -185,6 +202,17 @@ class OrcaCloud:
     # --------------------------------------------------------------- pull
     async def pull(self) -> dict[str, Any]:
         """Full pull of all cloud presets into PROFILES_DIR/cloud (replacing it)."""
+        try:
+            return await self._pull()
+        except OrcaCloudError:
+            raise
+        except Exception as e:  # noqa: BLE001 - turn anything unexpected into a readable error
+            log.exception("Orca Cloud pull crashed")
+            self.state["last_error"] = f"{e.__class__.__name__}: {e}"
+            self._save()
+            raise OrcaCloudError(f"Orca Cloud sync crashed: {e.__class__.__name__}: {e}") from e
+
+    async def _pull(self) -> dict[str, Any]:
         token = await self._ensure_token()
         upserts: list[dict[str, Any]] = []
         cursor: int | None = None
@@ -202,11 +230,16 @@ class OrcaCloud:
             if r.status_code == 304:
                 break
             if r.status_code >= 400:
-                self.state["last_error"] = f"{r.status_code}: {r.text[:200]}"
+                snippet = re.sub(r"\s+", " ", r.text[:200]).strip()
+                self.state["last_error"] = f"{r.status_code}: {snippet}"
                 self._save()
-                raise OrcaCloudError(f"Orca Cloud sync failed ({r.status_code}): {r.text[:200]}")
-            data = r.json()
-            upserts.extend(data.get("upserts") or [])
+                raise OrcaCloudError(f"Orca Cloud sync failed ({r.status_code} from {url}): {snippet}")
+            data = _json_or_error(r, "Sync pull")
+            if isinstance(data, list):          # tolerate a bare list of profiles
+                data = {"upserts": data}
+            if not isinstance(data, dict):
+                raise OrcaCloudError(f"Unexpected sync response: {str(data)[:200]}")
+            upserts.extend(u for u in (data.get("upserts") or []) if isinstance(u, dict))
             nxt = data.get("next_cursor") or 0
             if not nxt or nxt == cursor or not data.get("upserts"):
                 break
