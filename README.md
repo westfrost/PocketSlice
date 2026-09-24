@@ -75,7 +75,7 @@ select OrcaSlicer's configuration folder. The browser uploads `user/`, `system/`
 
 **Orca Cloud (OrcaSlicer 2.4+, experimental):** if you enabled *Sync user presets* with an Orca
 account, the app can sign in (email/password or browser login) and pull presets from
-`cloud.orcaslicer.com`, manually or automatically every 15 min/hour. The API was derived from
+`api.orcaslicer.com`, manually or automatically every 15 min/hour. The API was derived from
 OrcaSlicer's source (`OrcaCloudServiceAgent.cpp`) and is not official; Bambu-account sync is a
 closed system and cannot be used.
 

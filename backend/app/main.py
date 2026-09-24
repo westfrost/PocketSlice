@@ -75,6 +75,13 @@ def moonraker() -> Moonraker:
     return Moonraker(s.get("moonraker_url"), s.get("moonraker_api_key"))
 
 
+@app.exception_handler(Exception)
+async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
+    """Never answer a bare 'Internal Server Error': the UI shows this detail."""
+    log.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse({"detail": f"Server error: {exc.__class__.__name__}: {exc}"}, status_code=500)
+
+
 # ----------------------------------------------------------------- auth
 COOKIE = "pocketslice_session"
 

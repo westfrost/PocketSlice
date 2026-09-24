@@ -93,6 +93,9 @@ def _fake_orca_cloud(calls: list):
             return httpx.Response(200, json={"access_token": "A-" + grant, "refresh_token": "R1", "expires_in": 3600,
                                              "user": {"id": "u1", "email": "me@x.dk"}})
         if url.startswith(oc.CLOUD_URL + oc.PULL_PATH):
+            assert request.url.host == "api.orcaslicer.com" and request.headers.get("apikey")
+            if request.headers.get("authorization") == "Bearer A-html":
+                return httpx.Response(200, headers={"content-type": "text/html"}, text="<html><body>Not Found</body></html>")
             if request.headers.get("authorization") != "Bearer A-password" and request.headers.get("authorization") != "Bearer A-refresh_token":
                 return httpx.Response(401, text="unauthorized")
             if "cursor=" not in url:
@@ -140,6 +143,12 @@ async def test_orca_cloud_login_and_pull(client, env):
     r = await c.post("/api/orca-cloud/pull")
     assert r.status_code == 200
     assert any("grant_type=refresh_token" in u for _, u, _, _ in calls)
+
+    # an HTML page instead of JSON must become a readable 502, not a 500
+    main.orca_cloud.state["access_token"] = "A-html"
+    main.orca_cloud.state["expires_at"] = 9e12
+    r = await c.post("/api/orca-cloud/pull")
+    assert r.status_code == 502 and "was not JSON" in r.json()["detail"] and "Not Found" in r.json()["detail"]
 
     await c.post("/api/orca-cloud/logout")
     assert (await c.get("/api/orca-cloud/status")).json()["logged_in"] is False
