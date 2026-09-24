@@ -73,11 +73,12 @@ ENV PATH="/venv/bin:$PATH" \
     ORCA_SYSTEM_PROFILES=/opt/orca/resources/profiles \
     FRONTEND_DIR=/app/frontend \
     HOME=/data/home \
+    PORT=8080 \
     PYTHONUNBUFFERED=1
 
 VOLUME ["/data", "/profiles"]
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD curl -fs http://127.0.0.1:8080/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD curl -fs "http://127.0.0.1:${PORT}/api/health" || exit 1
 
 WORKDIR /app/backend
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips=*"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --forwarded-allow-ips='*'"]

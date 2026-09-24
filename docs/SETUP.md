@@ -263,40 +263,39 @@ cd /opt/pocketslice && docker compose up -d
 ## 8. Access from outside your home – Tailscale, free
 
 **Never** open ports on your router. Tailscale creates a private network between your devices.
+Install it on the phone and on the server; then the phone can reach the server from anywhere.
 
 1. Create a free account at <https://tailscale.com> and install the Tailscale app on your phone. Sign in.
-2. Create a key: <https://login.tailscale.com/admin/settings/keys> → **Generate auth key** →
-   enable *Reusable* → copy the key (starts with `tskey-auth-`).
-3. Enable **MagicDNS** and **HTTPS Certificates** at <https://login.tailscale.com/admin/dns>.
-4. On the server (SSH or `pct enter`):
+2. Enable **MagicDNS** and **HTTPS Certificates** at <https://login.tailscale.com/admin/dns>
+   (one click each; they give the server a name and a valid certificate).
+3. On the server (SSH or `pct enter`), install Tailscale and sign in. The second command prints
+   a link; open it on any device and approve:
 
    ```bash
-   cd /opt/pocketslice
-   nano .env
+   curl -fsSL https://tailscale.com/install.sh | sh
+   tailscale up
    ```
 
-   Find the line `TS_AUTHKEY=` and paste the key so it reads `TS_AUTHKEY=tskey-auth-....`.
-   Save with `Ctrl+O`, Enter, and exit with `Ctrl+X`.
-
-5. Start with the Tailscale configuration:
+4. Publish PocketSlice on your tailnet with HTTPS (one command, it stays on after reboots):
 
    ```bash
-   docker compose -f docker-compose.yml -f docker-compose.tailscale.yml up -d --build
+   tailscale serve --bg 8080
    ```
 
-6. After about a minute the app is at **`https://pocketslice.<your-tailnet>.ts.net`** (the name
-   is shown in the Tailscale app under *Machines*). Open it on the phone and add it to the home
-   screen again; that address works both at home and away.
+   It prints the address, e.g. **`https://pocketslice.tail1234.ts.net`**. Open that on the
+   phone and add it to the home screen; it works both at home and away.
 
-> If Tailscale runs inside a Proxmox container, the container needs access to `/dev/net/tun`.
-> Run this **in the Proxmox shell** (not inside the container), change `200` to your CTID, and
-> reboot the container:
+> **Proxmox container:** if `tailscale up` complains about `/dev/net/tun`, run this **in the
+> Proxmox shell** (not inside the container), change `200` to your CTID, and reboot the container:
 >
 > ```bash
 > echo 'lxc.cgroup2.devices.allow: c 10:200 rwm' >> /etc/pve/lxc/200.conf
 > echo 'lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file' >> /etc/pve/lxc/200.conf
 > pct reboot 200
 > ```
+
+> **Not on Proxmox?** `docker-compose.tailscale.yml` runs Tailscale as a Docker sidecar instead
+> (see the comments in that file). It does not work inside unprivileged LXC containers.
 
 ---
 
@@ -309,9 +308,11 @@ cd /opt/pocketslice && docker compose up -d
 | *Preset X inherits Y which was not found* | You only uploaded `user/`. Upload the whole OrcaSlicer folder again (method A) so `system/` comes along. |
 | Slicing fails | Tap **Slicer log** on the job. Error codes are translated (e.g. *Object is too large for the print bed*). |
 | `curl: command not found` | Run `apt-get update && apt-get install -y curl` first (step 3.1). |
+| `open sysctl net.ipv4.ip_unprivileged_port_start ... permission denied` when the container starts | Docker's bridge networking is not allowed in an unprivileged LXC. PocketSlice uses `network_mode: host` to avoid it; update with the install command and run `cd /opt/pocketslice && docker compose up -d`. |
 | `docker: permission denied` / Docker will not start in the LXC | The container is missing `nesting=1,keyctl=1`. In the Proxmox shell: `pct set 200 --features nesting=1,keyctl=1 && pct reboot 200`. |
 | Build fails with *Could not download OrcaSlicer* | The file name on GitHub changed. Find the newest Linux AppImage at <https://github.com/SoftFever/OrcaSlicer/releases>, copy the link and run: `cd /opt/pocketslice && docker compose build --build-arg ORCA_APPIMAGE_URL=<link> && docker compose up -d` |
 | Forgot the app password | On the server: `docker exec pocketslice sh -c 'sed -i "s/\"password_hash\": \".*\"/\"password_hash\": \"\"/" /data/settings.json'` then `docker compose restart`. |
+| The app runs but Moonraker says *Offline* and you used `voron.local` | Use the printer's IP address; `.local` names do not resolve inside the container. |
 | Webcam does not show | Enter the full address (e.g. `http://192.168.1.50/webcam/?action=stream`) under Settings → Webcam. |
 | The phone cannot open `http://<ip>:8080` | Is the phone on the same Wi-Fi? Is the container running (`pct list` in Proxmox)? Try from the PC first. |
 | Slicing is slow | Give the container more cores (`pct set 200 --cores 8`) and check nothing else hogs the Proxmox host. See "Slicing speed" in the README. |
