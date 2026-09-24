@@ -10,6 +10,10 @@
 # Non-interactive:  MOONRAKER_URL=http://192.168.1.50:7125 PORT=8080 ./install.sh
 set -euo pipefail
 
+# Fresh Debian/Proxmox templates often have LANG set to a locale that is not
+# installed, which makes perl/apt print locale warnings. Harmless, but noisy.
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
+
 REPO_URL="${REPO_URL:-https://github.com/westfrost/PocketSlice.git}"
 BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/pocketslice}"
@@ -50,6 +54,7 @@ if [ ! -f .env ]; then
     read -r -p "Moonraker URL of your printer (e.g. http://192.168.1.50:7125) [http://voron.local:7125]: " MOONRAKER_URL
   fi
   MOONRAKER_URL="${MOONRAKER_URL:-http://voron.local:7125}"
+  echo "Using MOONRAKER_URL=$MOONRAKER_URL (change it later in the app's Settings or in $INSTALL_DIR/.env)"
   cat > .env <<EOF
 MOONRAKER_URL=$MOONRAKER_URL
 MOONRAKER_API_KEY=

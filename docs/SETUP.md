@@ -137,6 +137,10 @@ The script:
 4. builds the app – **this takes 3–10 minutes** because OrcaSlicer (about 150 MB) is downloaded,
 5. starts the app and prints the address to open.
 
+You may see lines like `perl: warning: Setting locale failed` or `Can't set locale`. They are
+harmless: the container's language setting points at a language pack that is not installed.
+Nothing fails because of it.
+
 When you see `PocketSlice is running`, the server part is done. If something goes wrong, see
 section 9 (Troubleshooting).
 
